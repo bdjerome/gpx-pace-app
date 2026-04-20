@@ -5,6 +5,7 @@
       "name": "FastAPI: Uvicorn",
       "type": "python",
       "request": "launch",
+      "python": "/opt/miniconda3/envs/gpx-pace-app/bin/python",
       "module": "uvicorn",
       "args": [
         "app.main:app",

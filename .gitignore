@@ -21,3 +21,6 @@ frontend/dist/
 
 # macOS
 .DS_Store
+
+#select md files 
+local-dev-startup.md
