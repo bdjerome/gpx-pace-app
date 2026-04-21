@@ -24,3 +24,6 @@ frontend/dist/
 
 #select md files 
 local-dev-startup.md
+
+#ignore any file in tmp directory
+tmp/

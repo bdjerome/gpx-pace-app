@@ -175,12 +175,63 @@ Move `pace_planner.py` and `misc_functions.py` into `backend/app/core/gpx/` with
 
 ### Step 8 — Build the GPX Upload and Analysis Endpoints
 
-`POST /routes/gpx` and `POST /routes/analyze` — these are DB-free (no auth required for analyze):
+**Design decision: guest-first analysis.** `POST /routes/analyze` accepts the raw GPX file and config in a single `multipart/form-data` request — no account required. GCS upload and the `gpx_files` DB record only happen when a logged-in user saves a plan (Step 9). This matches the original Streamlit UX where any visitor could drop a file and get results immediately.
 
-- `POST /routes/gpx`: accept `multipart/form-data`, validate GPX format, upload to GCS, create a `gpx_files` record, return `{ file_id, gpx_filename, file_size_bytes }`
-- `POST /routes/analyze`: accept `file_id` + config JSON, download file from GCS, run the full analysis pipeline (`GPXAnalyzer` → `PaceCalculator` → `merge_custom_markers` → `MapVisualizer`), serialize `analyzer.final_df` to JSON, return split table, summary stats, and map info
+#### `POST /routes/analyze` — Guest-accessible, no auth required
 
-**Note on Plotly charts:** Instead of generating PNG images server-side, return the raw Plotly figure as JSON. The Vue frontend renders it using `vue-plotly` or `plotly.js` directly — this gives better interactivity than the static images.
+- Accept `multipart/form-data` with two parts:
+  - `file`: the `.gpx` file bytes
+  - `config`: a JSON string containing `{ loops, base_pace, race_start_time, decay, hill_mode, pace_unit, custom_markers }`
+- Validate the file parses cleanly with `gpxpy` — return HTTP 422 if invalid
+- Write bytes to a `tempfile.NamedTemporaryFile(suffix=".gpx")`, run the full pipeline:
+  1. `GPXAnalyzer(tmp_path)` → `load_gpx()` → `map_adjustment(loops)` → `calculate_distances()` → `find_kilometer_markers()`
+  2. `PaceCalculator(analyzer, base_pace)` → `calculate_pace(decay, hill_mode)` → `calculate_times()` → `calculate_clock_times(race_start_time)`
+  3. `merge_custom_markers(analyzer.final_df, custom_markers, use_km=pace_unit=='km')`
+  4. `MapVisualizer` → `create_base_map()` → `add_kilometer_markers_directional()` → capture HTML via `map._repr_html_()`
+  5. `plotly_elevation_plot()` and `plotly_pace_plot()` → call `.to_json()` on each figure
+- Clean up the temp file after analysis
+- Serialize `final_df` km-marker rows to the split table list
+- Compute summary stats: total distance, avg pace, total duration (from `cumulative_time_hms` on last row), elevation gain (sum of positive `segment_gain`)
+- Return `AnalyzeResponse`:
+  ```json
+  {
+    "split_table": [...],
+    "summary": {
+      "total_distance_km": 42.2,
+      "avg_pace_min_per_km": 6.1,
+      "total_duration_hms": "04:18:00",
+      "elevation_gain_m": 850.0,
+      "elevation_loss_m": 847.0
+    },
+    "map_html": "<html>...</html>",
+    "elevation_chart_json": "{...plotly figure...}",
+    "pace_chart_json": "{...plotly figure...}"
+  }
+  ```
+
+#### `POST /routes/gpx` — Auth required, called only when saving a plan
+
+- Accept `multipart/form-data` with the `.gpx` file
+- Requires `get_current_user` dependency (JWT Bearer token)
+- Validate GPX format with `gpxpy` — return HTTP 422 if invalid
+- Upload to GCS at path `users/{user_id}/gpx/{file_id}/{filename}.gpx`
+- Insert a `gpx_files` record in the DB
+- Return `{ file_id, gpx_filename, file_size_bytes }`
+
+**Frontend flow:**
+1. Guest drops a GPX file → frontend calls `POST /routes/analyze` directly with the file + config → results displayed
+2. Logged-in user hits "Save Plan" → frontend first calls `POST /routes/gpx` to upload the file and get a `file_id`, then calls `POST /routes` (Step 9) with the `file_id` + config to persist the plan
+
+**Note on Plotly charts:** Return the raw Plotly figure as JSON via `.to_json()`. The Vue frontend renders it using `plotly.js` directly — this gives better interactivity than static images.
+
+**Implementation steps:**
+1. Add Pydantic schemas to `db/schemas.py`: `AnalyzeConfig`, `SplitRow`, `SummaryStats`, `AnalyzeResponse`, `GpxUploadResponse`
+2. Create `backend/app/services/storage.py` with `upload_gpx_file()` and `download_gpx_file()`:
+   - In GCP: create a private GCS bucket, set object paths to `users/{user_id}/gpx/{file_id}/{filename}.gpx`
+   - Locally: include a stub controlled by a `USE_LOCAL_STORAGE=true` env var that reads/writes to `backend/tmp/` instead of GCS — no credentials needed for local dev
+3. Create `backend/app/api/routes/gpx.py` with the `POST /routes/gpx` upload endpoint
+4. Create `backend/app/api/routes/analyze.py` with the `POST /routes/analyze` endpoint
+5. Register both routers in `main.py` under the `/routes` prefix
 
 ### Step 9 — Build the Race Plans CRUD Endpoints
 
@@ -202,26 +253,7 @@ These endpoints require auth and interact with the DB — built after models and
 
 ---
 
-## Phase 4: File Storage (Google Cloud Storage)
-
----
-
-## Phase 5: File Storage (Google Cloud Storage)
-
-### Step 11 — Set Up GCS Bucket
-
-- Create a GCS bucket for storing user GPX files
-- Set bucket-level access to private (no public access)
-- Structure object paths as `users/{user_id}/gpx/{file_id}/{filename}.gpx`
-- In `backend/app/services/storage.py`, write two functions:
-  - `upload_gpx_file(user_id, file_id, filename, file_bytes)` → returns GCS path
-  - `download_gpx_file(gcs_path)` → returns file bytes
-
-- When a user uploads a new GPX file, upload it to GCS first, create a `gpx_files` record with the GCS path, then save/update the race plan config
-
----
-
-## Phase 5: Frontend Development (Vue.js)
+## Phase 4: Frontend Development (Vue.js)
 
 ### Step 12 — Initialize the Vue.js Project
 

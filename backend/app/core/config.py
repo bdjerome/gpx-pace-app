@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -6,7 +8,10 @@ class Settings(BaseSettings):
     database_url: str
 
     # Google Cloud Storage
-    gcs_bucket_name: str
+    gcs_bucket_name: Optional[str] = None  # not required when use_local_storage=true
+
+    # Local storage (dev only) — set USE_LOCAL_STORAGE=true to skip GCS entirely
+    use_local_storage: bool = False
 
     # JWT
     jwt_secret: str

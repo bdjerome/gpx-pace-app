@@ -120,3 +120,67 @@ class RacePlanRead(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# GPX Analysis  (POST /routes/analyze)
+# ---------------------------------------------------------------------------
+
+class CustomMarker(BaseModel):
+    """A single user-defined marker (aid station, checkpoint, etc.)."""
+
+    distance: float                     # km or miles depending on pace_unit
+    nickname: str
+    cutoff_time: Optional[str] = None   # "HH:MM" or "HH:MM:SS", omit if no cutoff
+
+
+class AnalyzeConfig(BaseModel):
+    """Request config sent alongside the GPX file for analysis."""
+
+    loops: int = 1
+    base_pace: str                      # "M:SS" or "MM:SS", e.g. "5:30" for 5 min 30 sec/km
+    race_start_time: str                # "HH:MM" or "HH:MM:SS", e.g. "08:00"
+    decay: bool = False
+    hill_mode: bool = False
+    pace_unit: str = "min/km"           # "min/km" | "min/mile"
+    custom_markers: list[CustomMarker] = []
+
+
+class SplitRow(BaseModel):
+    """One km-marker row in the analysis split table."""
+
+    km: int
+    total_distance_km: float
+    elevation_m: float
+    pace_min_per_km: float
+    cumulative_time_hms: str
+    clock_time: Optional[str] = None
+    custom_marker: Optional[str] = None
+    cutoff_time: Optional[str] = None       # formatted "HH:MM:SS" if present
+    cutoff_buffer_min: Optional[float] = None
+
+
+class SummaryStats(BaseModel):
+    total_distance_km: float
+    avg_pace_min_per_km: float
+    total_duration_hms: str
+    elevation_gain_m: float
+    elevation_loss_m: float
+
+
+class AnalyzeResponse(BaseModel):
+    split_table: list[SplitRow]
+    summary: SummaryStats
+    map_html: str
+    elevation_chart_json: Optional[str] = None  # None when GPX has no elevation data
+    pace_chart_json: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# GPX File Upload  (POST /routes/gpx)
+# ---------------------------------------------------------------------------
+
+class GpxUploadResponse(BaseModel):
+    file_id: uuid.UUID
+    gpx_filename: str
+    file_size_bytes: int

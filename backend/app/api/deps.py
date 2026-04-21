@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,11 +10,11 @@ from app.core import security
 from app.db.models import User
 from app.db.session import get_db
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+bearer_scheme = HTTPBearer()
 
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """Validate the Bearer token and return the authenticated User.
@@ -29,9 +29,30 @@ async def get_current_user(
     )
 
     try:
-        payload = security.decode_token(token)
+        payload = security.decode_token(credentials.credentials)
     except JWTError:
         raise credentials_exc
+
+    # Reject refresh tokens being presented as access tokens
+    if payload.get("type") != "access":
+        raise credentials_exc
+
+    sub: str | None = payload.get("sub")
+    if sub is None:
+        raise credentials_exc
+
+    try:
+        user_id = uuid.UUID(sub)
+    except ValueError:
+        raise credentials_exc
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        raise credentials_exc
+
+    return user
 
     # Reject refresh tokens being presented as access tokens
     if payload.get("type") != "access":
