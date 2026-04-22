@@ -71,6 +71,39 @@ def upload_gpx_file(
     return f"{_GCS_PREFIX}{settings.gcs_bucket_name}/{object_path}"
 
 
+def upload_template_gpx_file(
+    file_id: uuid.UUID,
+    filename: str,
+    file_bytes: bytes,
+) -> str:
+    """Upload a platform template GPX file (no user owner).
+
+    Object path: templates/{file_id}/{filename}
+    Returns the same local:// or gs:// prefixed path stored in the DB.
+    """
+    object_path = f"templates/{file_id}/{filename}"
+
+    if settings.use_local_storage:
+        dest = _local_path(object_path)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(file_bytes)
+        return f"{_LOCAL_PREFIX}{object_path}"
+
+    # --- GCS ---
+    from google.cloud import storage as gcs
+
+    if not settings.gcs_bucket_name:
+        raise RuntimeError(
+            "GCS_BUCKET_NAME must be set when USE_LOCAL_STORAGE is false."
+        )
+
+    client = gcs.Client()
+    bucket = client.bucket(settings.gcs_bucket_name)
+    blob = bucket.blob(object_path)
+    blob.upload_from_string(file_bytes, content_type="application/gpx+xml")
+    return f"{_GCS_PREFIX}{settings.gcs_bucket_name}/{object_path}"
+
+
 # ---------------------------------------------------------------------------
 # Download
 # ---------------------------------------------------------------------------

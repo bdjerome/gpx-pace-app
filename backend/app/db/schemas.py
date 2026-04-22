@@ -101,6 +101,7 @@ class RacePlanSummary(BaseModel):
     nickname: str
     gpx_file_id: Optional[uuid.UUID]
     template_gpx_file_id: Optional[uuid.UUID]
+    gpx_filename: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

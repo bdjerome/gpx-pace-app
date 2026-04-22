@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # CORS
     cors_origin: str
 
+    # Admin
+    admin_api_key: Optional[str] = None  # if unset, POST /templates is disabled
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

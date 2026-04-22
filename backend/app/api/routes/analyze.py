@@ -142,55 +142,19 @@ def _compute_summary(df: pd.DataFrame) -> SummaryStats:
 
 
 # ---------------------------------------------------------------------------
-# Endpoint
+# Shared pipeline
 # ---------------------------------------------------------------------------
 
-@router.post("/analyze", response_model=AnalyzeResponse)
-async def analyze_gpx(
-    file: UploadFile = File(...),
-    config: str = Form(...),  # JSON string — no auth required
-) -> AnalyzeResponse:
-    """Analyze a GPX file and return split table, summary stats, map, and charts.
+def _run_analysis_pipeline(file_bytes: bytes, config: AnalyzeConfig) -> AnalyzeResponse:
+    """Run the full GPX analysis pipeline and return an AnalyzeResponse.
 
-    No authentication required — available to guest users.
-
-    Accepts multipart/form-data with:
-      - file:   the .gpx file
-      - config: JSON string matching AnalyzeConfig schema
-
-    For testing use {"loops": 1, "base_pace": "5:30", "race_start_time": "08:00", "decay": false, "hill_mode": false, "pace_unit": "min/km", "custom_markers": []}
+    Accepts already-validated GPX bytes and a parsed AnalyzeConfig.
+    Called by both POST /routes/analyze and GET /routes/{id}.
     """
-    # --- Parse config ---
-    try:
-        config_data = AnalyzeConfig(**json.loads(config))
-    except (json.JSONDecodeError, ValueError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid config JSON: {exc}",
-        )
+    base_pace_float = _parse_pace(config.base_pace)
+    start_time = _parse_time(config.race_start_time)
+    use_km = config.pace_unit == "min/km"
 
-    base_pace_float = _parse_pace(config_data.base_pace)
-    start_time = _parse_time(config_data.race_start_time)
-    use_km = config_data.pace_unit == "min/km"
-
-    # --- Read and validate the file ---
-    file_bytes = await file.read()
-
-    if len(file_bytes) > _MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File exceeds maximum allowed size of {_MAX_FILE_SIZE // (1024 * 1024)} MB.",
-        )
-
-    try:
-        gpxpy.parse(file_bytes.decode("utf-8", errors="replace"))
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Invalid GPX file. The file could not be parsed.",
-        )
-
-    # --- Run the analysis pipeline in a temp file ---
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".gpx", delete=False) as tmp:
@@ -200,21 +164,21 @@ async def analyze_gpx(
         # 1. GPXAnalyzer
         analyzer = GPXAnalyzer(tmp_path)
         analyzer.load_gpx()
-        analyzer.map_adjustment(loops=config_data.loops)
+        analyzer.map_adjustment(loops=config.loops)
         analyzer.calculate_distances()
         analyzer.find_kilometer_markers()
 
         # 2. PaceCalculator
         pace_calc = PaceCalculator(analyzer, base_pace_float)
         pace_calc.calculate_pace(
-            decay=config_data.decay,
-            hill_mode=config_data.hill_mode,
+            decay=config.decay,
+            hill_mode=config.hill_mode,
         )
         pace_calc.calculate_times()
         pace_calc.calculate_clock_times(start_time)
 
         # 3. Custom markers
-        marker_df = _markers_to_df(config_data)
+        marker_df = _markers_to_df(config)
         analyzer.final_df = merge_custom_markers(
             analyzer.final_df,
             marker_df,
@@ -258,3 +222,51 @@ async def analyze_gpx(
         elevation_chart_json=elevation_chart_json,
         pace_chart_json=pace_chart_json,
     )
+
+
+# ---------------------------------------------------------------------------
+# Endpoint
+# ---------------------------------------------------------------------------
+
+@router.post("/analyze", response_model=AnalyzeResponse)
+async def analyze_gpx(
+    file: UploadFile = File(...),
+    config: str = Form(...),  # JSON string — no auth required
+) -> AnalyzeResponse:
+    """Analyze a GPX file and return split table, summary stats, map, and charts.
+
+    No authentication required — available to guest users.
+
+    Accepts multipart/form-data with:
+      - file:   the .gpx file
+      - config: JSON string matching AnalyzeConfig schema
+
+    For testing use {"loops": 1, "base_pace": "5:30", "race_start_time": "08:00", "decay": false, "hill_mode": false, "pace_unit": "min/km", "custom_markers": []}
+    """
+    # --- Parse config ---
+    try:
+        config_data = AnalyzeConfig(**json.loads(config))
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid config JSON: {exc}",
+        )
+
+    # --- Read and validate the file ---
+    file_bytes = await file.read()
+
+    if len(file_bytes) > _MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File exceeds maximum allowed size of {_MAX_FILE_SIZE // (1024 * 1024)} MB.",
+        )
+
+    try:
+        gpxpy.parse(file_bytes.decode("utf-8", errors="replace"))
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid GPX file. The file could not be parsed.",
+        )
+
+    return _run_analysis_pipeline(file_bytes, config_data)

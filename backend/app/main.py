@@ -2,13 +2,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.api.routes import auth, gpx, analyze
+from app.api.routes import auth, gpx, analyze, routes, templates
 
 app = FastAPI(title="GPX Pace Planner API")
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(gpx.router, prefix="/routes", tags=["gpx"])
 app.include_router(analyze.router, prefix="/routes", tags=["analyze"])
+app.include_router(routes.router, prefix="/routes", tags=["routes"])
+app.include_router(templates.router, prefix="/templates", tags=["templates"])
 
 app.add_middleware(
     CORSMiddleware,
