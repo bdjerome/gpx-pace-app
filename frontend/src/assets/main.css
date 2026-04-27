@@ -1,0 +1,4 @@
+/* Vuetify handles all base styles — keep this file minimal */
+*, *::before, *::after {
+  box-sizing: border-box;
+}

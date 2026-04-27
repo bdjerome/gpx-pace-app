@@ -3,11 +3,15 @@ import io
 import json
 import os
 import tempfile
+import uuid
 from typing import Optional
 
 import gpxpy
 import pandas as pd
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.gpx.misc_functions import (
     calculate_time_difference,
@@ -16,7 +20,10 @@ from app.core.gpx.misc_functions import (
     plotly_pace_plot,
 )
 from app.core.gpx.pace_planner import GPXAnalyzer, MapVisualizer, PaceCalculator
+from app.db.models import TemplateGpxFile
 from app.db.schemas import AnalyzeConfig, AnalyzeResponse, SplitRow, SummaryStats
+from app.db.session import get_db
+from app.services import storage
 
 router = APIRouter()
 
@@ -270,3 +277,38 @@ async def analyze_gpx(
         )
 
     return _run_analysis_pipeline(file_bytes, config_data)
+
+
+# ---------------------------------------------------------------------------
+# Template-based analysis
+# ---------------------------------------------------------------------------
+
+class _TemplateAnalyzeRequest(BaseModel):
+    template_gpx_file_id: uuid.UUID
+    config: AnalyzeConfig
+
+
+@router.post("/analyze/template", response_model=AnalyzeResponse)
+async def analyze_template_gpx(
+    body: _TemplateAnalyzeRequest,
+    db: AsyncSession = Depends(get_db),
+) -> AnalyzeResponse:
+    """Run pace analysis using a platform template GPX file.
+
+    No authentication required. Accepts JSON body with:
+      - template_gpx_file_id: UUID of the template
+      - config: AnalyzeConfig object
+    """
+    result = await db.execute(
+        select(TemplateGpxFile).where(TemplateGpxFile.id == body.template_gpx_file_id)
+    )
+    template = result.scalar_one_or_none()
+    if template is None:
+        raise HTTPException(status_code=404, detail="Template not found.")
+
+    try:
+        file_bytes = storage.download_gpx_file(template.gcs_path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Template GPX file not found in storage.")
+
+    return _run_analysis_pipeline(file_bytes, body.config)

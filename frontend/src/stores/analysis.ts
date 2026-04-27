@@ -1,0 +1,101 @@
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+import { analyzeApi } from '@/api'
+import type { AnalyzeConfig, AnalyzeResponse, SplitRow } from '@/types'
+
+export const useAnalysisStore = defineStore('analysis', () => {
+  /** The GPX file currently loaded in the form */
+  const gpxFile = ref<File | null>(null)
+  const gpxFilename = ref<string | null>(null)
+
+  /** Template GPX file id when using a template instead of an uploaded file */
+  const templateId = ref<string | null>(null)
+
+  /** Results from the last successful /routes/analyze call */
+  const result = ref<AnalyzeResponse | null>(null)
+
+  /** Per-row notes keyed by km number (not persisted to backend yet) */
+  const rowNotes = ref<Record<number, string>>({})
+
+  const isLoading = ref(false)
+  const error = ref<string | null>(null)
+
+  function setGpxFile(file: File) {
+    gpxFile.value = file
+    gpxFilename.value = file.name
+    templateId.value = null
+    clearResult()
+  }
+
+  function setTemplateId(id: string, filename?: string) {
+    templateId.value = id
+    gpxFile.value = null
+    gpxFilename.value = filename ?? null
+    clearResult()
+  }
+
+  function clearResult() {
+    result.value = null
+    rowNotes.value = {}
+    error.value = null
+  }
+
+  function clearAll() {
+    gpxFile.value = null
+    gpxFilename.value = null
+    templateId.value = null
+    clearResult()
+  }
+
+  function setNote(km: number, note: string) {
+    rowNotes.value[km] = note
+  }
+
+  /** Enrich split_table with any notes stored locally */
+  function splitTableWithNotes(): (SplitRow & { note: string })[] {
+    if (!result.value) return []
+    return result.value.split_table.map((row) => ({
+      ...row,
+      note: rowNotes.value[row.km] ?? '',
+    }))
+  }
+
+  async function runAnalysis(config: AnalyzeConfig) {
+    const hasFile = !!gpxFile.value
+    const hasTemplate = !!templateId.value
+    if (!hasFile && !hasTemplate) {
+      error.value = 'No GPX file or template selected.'
+      return
+    }
+    isLoading.value = true
+    error.value = null
+    try {
+      const { data } = hasFile
+        ? await analyzeApi.run(gpxFile.value!, config)
+        : await analyzeApi.runWithTemplate(templateId.value!, config)
+      result.value = data
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string }
+      error.value = axiosErr.response?.data?.detail ?? axiosErr.message ?? 'Analysis failed.'
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  return {
+    gpxFile,
+    gpxFilename,
+    templateId,
+    result,
+    rowNotes,
+    isLoading,
+    error,
+    setGpxFile,
+    setTemplateId,
+    clearResult,
+    clearAll,
+    setNote,
+    splitTableWithNotes,
+    runAnalysis,
+  }
+})
