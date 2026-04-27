@@ -40,11 +40,11 @@
         </template>
 
         <template #item.created_at="{ item }">
-          {{ formatDate(item.created_at) }}
+          <span style="white-space: nowrap">{{ formatDate(item.created_at) }}</span>
         </template>
 
         <template #item.updated_at="{ item }">
-          {{ formatDate(item.updated_at) }}
+          <span style="white-space: nowrap">{{ formatDate(item.updated_at) }}</span>
         </template>
 
         <template #item.actions="{ item }">
@@ -115,13 +115,16 @@ onMounted(() => plans.fetchPlans())
 const headers = [
   { title: 'Name', key: 'nickname', minWidth: '160px' },
   { title: 'GPX File', key: 'gpx_filename' },
-  { title: 'Created', key: 'created_at', width: '140px' },
-  { title: 'Updated', key: 'updated_at', width: '140px' },
+  { title: 'Created', key: 'created_at', width: '185px' },
+  { title: 'Updated', key: 'updated_at', width: '185px' },
   { title: '', key: 'actions', width: '120px', sortable: false },
 ]
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' })
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
 }
 
 // ─── Load plan ─────────────────────────────────────────────────────────────

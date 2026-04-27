@@ -368,6 +368,14 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Snackbar feedback -->
+    <v-snackbar v-model="snackbar" :color="snackbarColor" timeout="3000" location="bottom right">
+      {{ snackbarMessage }}
+      <template #actions>
+        <v-btn variant="text" @click="snackbar = false">Dismiss</v-btn>
+      </template>
+    </v-snackbar>
   </v-container>
 </template>
 
@@ -376,7 +384,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useAnalysisStore } from '@/stores/analysis'
 import { useAuthStore } from '@/stores/auth'
 import { usePlansStore } from '@/stores/plans'
-import { plansApi } from '@/api'
+import { plansApi, gpxApi } from '@/api'
 import PlotlyChart from '@/components/PlotlyChart.vue'
 import type { AnalyzeConfig, CustomMarker } from '@/types'
 
@@ -494,6 +502,7 @@ async function loadPlan(id: string | null) {
 // ─── Summary cards ──────────────────────────────────────────────────────────
 const useImperial = ref(false)
 const KM_TO_MILE = 0.621371
+const M_TO_FT = 3.28084
 
 const summaryCards = computed(() => {
   const s = analysis.result?.summary
@@ -504,11 +513,15 @@ const summaryCards = computed(() => {
   const pace = useImperial.value
     ? formatPaceImperial(s.avg_pace_min_per_km)
     : `${formatPace(s.avg_pace_min_per_km)} /km`
+
+    const elevation = useImperial.value
+    ? `${(s.elevation_gain_m * M_TO_FT).toFixed(0)} ft`
+    : `${s.elevation_gain_m.toFixed(0)} m`
   return [
     { label: 'Distance', value: dist, icon: 'mdi-map-marker-distance' },
     { label: 'Avg Pace', value: pace, icon: 'mdi-speedometer' },
     { label: 'Duration', value: s.total_duration_hms, icon: 'mdi-clock-outline' },
-    { label: 'Elev Gain', value: `${s.elevation_gain_m.toFixed(0)} m`, icon: 'mdi-terrain' },
+    { label: 'Elev Gain', value: elevation, icon: 'mdi-terrain' },
   ]
 })
 
@@ -561,6 +574,16 @@ const saveDialog = ref(false)
 const saveName = ref('')
 const isSaving = ref(false)
 
+const snackbar = ref(false)
+const snackbarMessage = ref('')
+const snackbarColor = ref<'success' | 'error'>('success')
+
+function showSnackbar(message: string, color: 'success' | 'error') {
+  snackbarMessage.value = message
+  snackbarColor.value = color
+  snackbar.value = true
+}
+
 function openSaveDialog() {
   saveName.value = analysis.gpxFilename?.replace('.gpx', '') ?? ''
   saveDialog.value = true
@@ -570,8 +593,25 @@ async function confirmSave() {
   if (!saveName.value) return
   isSaving.value = true
   try {
+    // Resolve the file reference the backend needs.
+    // Template path: we already have the id from the analysis store.
+    // Upload path: upload now (auth-gated endpoint) to get a stored file_id.
+    let gpxFileId: string | undefined
+    let templateGpxFileId: string | undefined
+
+    if (analysis.templateId) {
+      templateGpxFileId = analysis.templateId
+    } else if (analysis.gpxFile) {
+      const { data } = await gpxApi.upload(analysis.gpxFile)
+      gpxFileId = data.file_id
+    } else {
+      return // nothing to save
+    }
+
     await plans.savePlan({
       nickname: saveName.value,
+      gpx_file_id: gpxFileId,
+      template_gpx_file_id: templateGpxFileId,
       config: {
         pace: config.value.base_pace,
         pace_unit: config.value.pace_unit,
@@ -582,7 +622,12 @@ async function confirmSave() {
         markers: config.value.custom_markers,
       },
     })
-    saveDialog.value = false
+    if (plans.error) {
+      showSnackbar(plans.error, 'error')
+    } else {
+      saveDialog.value = false
+      showSnackbar('Plan saved successfully!', 'success')
+    }
   } finally {
     isSaving.value = false
   }
