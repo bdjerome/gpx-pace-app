@@ -1,4 +1,5 @@
 import apiClient from './client'
+import authClient from './authClient'
 import type {
   LoginRequest,
   RegisterRequest,
@@ -21,10 +22,16 @@ import type {
 
 export const authApi = {
   login(data: LoginRequest) {
-    return apiClient.post<TokenResponse>('/auth/login', data)
+    return authClient.post<TokenResponse>('/auth/login', data)
   },
   register(data: RegisterRequest) {
-    return apiClient.post<UserProfile>('/auth/register', data)
+    return authClient.post<UserProfile>('/auth/register', data)
+  },
+  refresh() {
+    return authClient.post<TokenResponse>('/auth/refresh')
+  },
+  logout() {
+    return authClient.post('/auth/logout')
   },
 }
 

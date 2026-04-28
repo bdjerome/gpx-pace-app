@@ -1,71 +1,45 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { accessToken } from '@/api/client'
 import { authApi } from '@/api'
 import type { UserProfile, LoginRequest, RegisterRequest } from '@/types'
 
-function isTokenExpired(token: string): boolean {
-  try {
-    const segment = token.split('.')[1]
-    if (!segment) return true
-    // JWT uses base64url — normalize to standard base64 before decoding
-    const base64 = segment.replace(/-/g, '+').replace(/_/g, '/').padEnd(
-      segment.length + ((4 - (segment.length % 4)) % 4),
-      '=',
-    )
-    const payload = JSON.parse(atob(base64))
-    console.log('Token payload:', payload)
-    return typeof payload.exp === 'number' && payload.exp * 1000 < Date.now()
-  } catch (error) {
-    console.error('Error decoding token:', error)
-    return true // malformed token — treat as expired
-  }
-}
-
-function loadToken(key: string): string | null {
-  const token = localStorage.getItem(key)
-  if (!token || isTokenExpired(token)) {
-    localStorage.removeItem(key)
-    return null
-  }
-  return token
-}
-
 export const useAuthStore = defineStore('auth', () => {
-  const accessToken = ref<string | null>(loadToken('access_token'))
-  const refreshToken = ref<string | null>(loadToken('refresh_token'))
+  // accessToken is the shared Vue ref from api/client — written here and read
+  // by the axios interceptor without needing to import useAuthStore.
+  // It lives in memory only; it is never written to localStorage.
   const user = ref<UserProfile | null>(null)
+  const isAuthenticated = computed(() => !!accessToken.value)
 
-  // Computed property to check if user is authenticated based on presence and validity of access token
-  const isAuthenticated = computed(
-    () => !!accessToken.value && !isTokenExpired(accessToken.value),
-  )
-
-  // Persist tokens to localStorage and update reactive state
-  function _persist(access: string, refresh: string) {
-    accessToken.value = access
-    refreshToken.value = refresh
-    localStorage.setItem('access_token', access)
-    localStorage.setItem('refresh_token', refresh)
+  /**
+   * Called on app startup. Uses the HttpOnly refresh-token cookie (sent
+   * automatically by the browser) to obtain a fresh access token.
+   * Throws if no valid cookie exists — caller should swallow the error.
+   */
+  async function silentRefresh(): Promise<void> {
+    const { data } = await authApi.refresh()
+    accessToken.value = data.access_token
   }
 
-  async function login(credentials: LoginRequest) {
+  async function login(credentials: LoginRequest): Promise<void> {
     const { data } = await authApi.login(credentials)
-    _persist(data.access_token, data.refresh_token)
+    accessToken.value = data.access_token
   }
 
-  async function register(payload: RegisterRequest) {
+  async function register(payload: RegisterRequest): Promise<void> {
     const { data } = await authApi.register(payload)
     user.value = data
-    // Registration does not return a token — caller redirects to login
   }
 
-  function logout() {
+  async function logout(): Promise<void> {
     accessToken.value = null
-    refreshToken.value = null
     user.value = null
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
+    try {
+      await authApi.logout()
+    } catch {
+      // Cookie may already be expired — clearing the in-memory token is enough.
+    }
   }
 
-  return { accessToken, refreshToken, user, isAuthenticated, login, register, logout }
+  return { accessToken, user, isAuthenticated, silentRefresh, login, register, logout }
 })

@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     jwt_access_token_expire_minutes: int = 15
     jwt_refresh_token_expire_days: int = 7
 
+    # Cookie — set COOKIE_SECURE=true in production (HTTPS only)
+    cookie_secure: bool = False
+
     # CORS
     cors_origin: str
 

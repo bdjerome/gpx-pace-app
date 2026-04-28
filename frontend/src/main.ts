@@ -11,6 +11,7 @@ import * as directives from 'vuetify/directives'
 
 import App from './App.vue'
 import router from './router'
+import { useAuthStore } from './stores/auth'
 
 const vuetify = createVuetify({
   components,
@@ -37,9 +38,17 @@ const vuetify = createVuetify({
 })
 
 const app = createApp(App)
+const pinia = createPinia()
 
-app.use(createPinia())
+app.use(pinia)
 app.use(router)
 app.use(vuetify)
 
-app.mount('#app')
+// Attempt a silent token refresh before first render so that users with a
+// valid refresh-token cookie are immediately authenticated without a login
+// redirect. The error is intentionally swallowed — if the cookie is missing
+// or expired the user simply stays unauthenticated.
+const auth = useAuthStore()
+auth.silentRefresh().catch(() => {}).finally(() => {
+  app.mount('#app')
+})
