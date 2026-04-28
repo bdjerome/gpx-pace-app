@@ -102,12 +102,9 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePlansStore } from '@/stores/plans'
-import { useAnalysisStore } from '@/stores/analysis'
-import { plansApi } from '@/api'
 import type { RacePlanSummary } from '@/types'
 
 const plans = usePlansStore()
-const analysis = useAnalysisStore()
 const router = useRouter()
 
 onMounted(() => plans.fetchPlans())
@@ -128,16 +125,10 @@ function formatDate(iso: string) {
 }
 
 // ─── Load plan ─────────────────────────────────────────────────────────────
-async function loadPlan(id: string) {
-  try {
-    const { data } = await plansApi.get(id)
-    if (data.analysis) {
-      analysis.result = data.analysis
-    }
-    router.push({ name: 'analyze' })
-  } catch {
-    // error handled globally
-  }
+function loadPlan(id: string) {
+  // Navigate to AnalyzeView with the plan ID as a query param so that
+  // AnalyzeView.loadPlan can set config, selectedPlanId, and all local state.
+  router.push({ name: 'analyze', query: { planId: id } })
 }
 
 // ─── Rename ─────────────────────────────────────────────────────────────────

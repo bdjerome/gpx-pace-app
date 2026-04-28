@@ -11,6 +11,9 @@ export const useAnalysisStore = defineStore('analysis', () => {
   /** Template GPX file id when using a template instead of an uploaded file */
   const templateId = ref<string | null>(null)
 
+  /** Stored user GPX file id (set when loading a saved plan with a user-uploaded file) */
+  const gpxFileId = ref<string | null>(null)
+
   /** Results from the last successful /routes/analyze call */
   const result = ref<AnalyzeResponse | null>(null)
 
@@ -24,12 +27,22 @@ export const useAnalysisStore = defineStore('analysis', () => {
     gpxFile.value = file
     gpxFilename.value = file.name
     templateId.value = null
+    gpxFileId.value = null
     clearResult()
   }
 
   function setTemplateId(id: string, filename?: string) {
     templateId.value = id
     gpxFile.value = null
+    gpxFileId.value = null
+    gpxFilename.value = filename ?? null
+    clearResult()
+  }
+
+  function setGpxFileId(id: string, filename?: string) {
+    gpxFileId.value = id
+    gpxFile.value = null
+    templateId.value = null
     gpxFilename.value = filename ?? null
     clearResult()
   }
@@ -44,6 +57,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
     gpxFile.value = null
     gpxFilename.value = null
     templateId.value = null
+    gpxFileId.value = null
     clearResult()
   }
 
@@ -63,7 +77,8 @@ export const useAnalysisStore = defineStore('analysis', () => {
   async function runAnalysis(config: AnalyzeConfig) {
     const hasFile = !!gpxFile.value
     const hasTemplate = !!templateId.value
-    if (!hasFile && !hasTemplate) {
+    const hasGpxFileId = !!gpxFileId.value
+    if (!hasFile && !hasTemplate && !hasGpxFileId) {
       error.value = 'No GPX file or template selected.'
       return
     }
@@ -72,7 +87,9 @@ export const useAnalysisStore = defineStore('analysis', () => {
     try {
       const { data } = hasFile
         ? await analyzeApi.run(gpxFile.value!, config)
-        : await analyzeApi.runWithTemplate(templateId.value!, config)
+        : hasTemplate
+          ? await analyzeApi.runWithTemplate(templateId.value!, config)
+          : await analyzeApi.runWithGpxFileId(gpxFileId.value!, config)
       result.value = data
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string }
@@ -86,12 +103,14 @@ export const useAnalysisStore = defineStore('analysis', () => {
     gpxFile,
     gpxFilename,
     templateId,
+    gpxFileId,
     result,
     rowNotes,
     isLoading,
     error,
     setGpxFile,
     setTemplateId,
+    setGpxFileId,
     clearResult,
     clearAll,
     setNote,

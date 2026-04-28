@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { plansApi, gpxApi } from '@/api'
-import type { RacePlanSummary, RacePlanCreate, TemplateGpxFile } from '@/types'
+import type { RacePlanSummary, RacePlanCreate, RacePlanUpdate, TemplateGpxFile } from '@/types'
 
 export const usePlansStore = defineStore('plans', () => {
   const plans = ref<RacePlanSummary[]>([])
@@ -35,10 +35,11 @@ export const usePlansStore = defineStore('plans', () => {
   }
 
   async function savePlan(payload: RacePlanCreate): Promise<string | null> {
+    error.value = null
     try {
       const { data } = await plansApi.create(payload)
       await fetchPlans() // refresh list
-      return data.route_id
+      return data.id
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string }
       error.value = axiosErr.response?.data?.detail ?? axiosErr.message ?? 'Failed to save plan.'
@@ -71,5 +72,18 @@ export const usePlansStore = defineStore('plans', () => {
     }
   }
 
-  return { plans, templates, isLoading, error, fetchPlans, fetchTemplates, savePlan, deletePlan, renamePlan }
+  async function updatePlan(id: string, data: RacePlanUpdate): Promise<boolean> {
+    error.value = null
+    try {
+      await plansApi.update(id, data)
+      await fetchPlans()
+      return true
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: string } }; message?: string }
+      error.value = axiosErr.response?.data?.detail ?? axiosErr.message ?? 'Failed to update plan.'
+      return false
+    }
+  }
+
+  return { plans, templates, isLoading, error, fetchPlans, fetchTemplates, savePlan, updatePlan, deletePlan, renamePlan }
 })

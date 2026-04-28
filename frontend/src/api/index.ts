@@ -7,6 +7,7 @@ import type {
   GpxUploadResponse,
   AnalyzeConfig,
   AnalyzeResponse,
+  PlanWithAnalysis,
   RacePlanCreate,
   RacePlanUpdate,
   RacePlanSummary,
@@ -75,6 +76,17 @@ export const analyzeApi = {
       config,
     })
   },
+
+  /**
+   * Re-run analysis using a previously uploaded user GPX file. Auth required.
+   * Sends gpx_file_id + config as JSON.
+   */
+  runWithGpxFileId(gpxFileId: string, config: AnalyzeConfig) {
+    return apiClient.post<AnalyzeResponse>('/routes/analyze/gpx-file', {
+      gpx_file_id: gpxFileId,
+      config,
+    })
+  },
 }
 
 // ---------------------------------------------------------------------------
@@ -87,15 +99,15 @@ export const plansApi = {
   },
 
   get(id: string) {
-    return apiClient.get<RacePlanRead & { analysis: AnalyzeResponse }>(`/routes/${id}`)
+    return apiClient.get<PlanWithAnalysis>(`/routes/${id}`)
   },
 
   create(data: RacePlanCreate) {
-    return apiClient.post<{ route_id: string; nickname: string; created_at: string }>('/routes', data)
+    return apiClient.post<RacePlanSummary>('/routes', data)
   },
 
   update(id: string, data: RacePlanUpdate) {
-    return apiClient.put<{ route_id: string; nickname: string; created_at: string; updated_at: string }>(
+    return apiClient.put<RacePlanSummary>(
       `/routes/${id}`,
       data,
     )

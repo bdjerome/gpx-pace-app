@@ -14,7 +14,9 @@ from app.db.schemas import (
     AnalyzeConfig,
     AnalyzeResponse,
     CustomMarker,
+    PlanWithAnalysis,
     RacePlanCreate,
+    RacePlanRead,
     RacePlanSummary,
     RacePlanUpdate,
 )
@@ -191,13 +193,13 @@ async def list_race_plans(
 # GET /routes/{id} — Re-run analysis for a saved plan
 # ---------------------------------------------------------------------------
 
-@router.get("/{plan_id}", response_model=AnalyzeResponse)
+@router.get("/{plan_id}", response_model=PlanWithAnalysis)
 async def get_race_plan(
     plan_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> AnalyzeResponse:
-    """Re-run the full analysis pipeline for a saved plan and return AnalyzeResponse.
+) -> PlanWithAnalysis:
+    """Re-run the full analysis pipeline for a saved plan and return PlanWithAnalysis.
 
     Verifies ownership (403 if mismatch), downloads the stored GPX file, and
     re-executes the analysis using the saved config — no result caching.
@@ -232,7 +234,10 @@ async def get_race_plan(
             detail=f"Stored plan config is malformed: {exc}",
         )
 
-    return _run_analysis_pipeline(file_bytes, analyze_config)
+    return PlanWithAnalysis(
+        plan=RacePlanRead.model_validate(plan),
+        analysis=_run_analysis_pipeline(file_bytes, analyze_config),
+    )
 
 
 # ---------------------------------------------------------------------------

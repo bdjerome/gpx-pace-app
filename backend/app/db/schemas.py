@@ -177,6 +177,12 @@ class AnalyzeResponse(BaseModel):
     pace_chart_json: Optional[str] = None
 
 
+class PlanWithAnalysis(BaseModel):
+    """Combined response returned by GET /routes/{id}: stored plan config + fresh analysis."""
+    plan: RacePlanRead
+    analysis: AnalyzeResponse
+
+
 # ---------------------------------------------------------------------------
 # GPX File Upload  (POST /routes/gpx)
 # ---------------------------------------------------------------------------

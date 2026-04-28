@@ -138,6 +138,11 @@ export interface RacePlanRead {
   updated_at: string
 }
 
+export interface PlanWithAnalysis {
+  plan: RacePlanRead
+  analysis: AnalyzeResponse
+}
+
 // ---------------------------------------------------------------------------
 // Template GPX files (public, no auth required)
 // ---------------------------------------------------------------------------

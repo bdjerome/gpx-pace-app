@@ -20,7 +20,8 @@ from app.core.gpx.misc_functions import (
     plotly_pace_plot,
 )
 from app.core.gpx.pace_planner import GPXAnalyzer, MapVisualizer, PaceCalculator
-from app.db.models import TemplateGpxFile
+from app.api.deps import get_current_user
+from app.db.models import GpxFile, TemplateGpxFile, User
 from app.db.schemas import AnalyzeConfig, AnalyzeResponse, SplitRow, SummaryStats
 from app.db.session import get_db
 from app.services import storage
@@ -310,5 +311,52 @@ async def analyze_template_gpx(
         file_bytes = storage.download_gpx_file(template.gcs_path)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Template GPX file not found in storage.")
+
+    return _run_analysis_pipeline(file_bytes, body.config)
+
+
+# ---------------------------------------------------------------------------
+# Stored user GPX file analysis  (auth required)
+# ---------------------------------------------------------------------------
+
+class _GpxFileAnalyzeRequest(BaseModel):
+    gpx_file_id: uuid.UUID
+    config: AnalyzeConfig
+
+
+@router.post("/analyze/gpx-file", response_model=AnalyzeResponse)
+async def analyze_stored_gpx(
+    body: _GpxFileAnalyzeRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> AnalyzeResponse:
+    """Re-run analysis using a previously uploaded user GPX file.
+
+    Authentication required. Verifies that the file belongs to the requesting
+    user before downloading from storage and running the analysis pipeline.
+
+    Accepts JSON body with:
+      - gpx_file_id: UUID of the stored GpxFile
+      - config: AnalyzeConfig object
+    """
+    result = await db.execute(
+        select(GpxFile).where(GpxFile.id == body.gpx_file_id)
+    )
+    gpx_file = result.scalar_one_or_none()
+    if gpx_file is None:
+        raise HTTPException(status_code=404, detail="GPX file not found.")
+    if gpx_file.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="GPX file does not belong to you.",
+        )
+
+    try:
+        file_bytes = storage.download_gpx_file(gpx_file.gcs_path)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail="GPX file not found in storage.",
+        )
 
     return _run_analysis_pipeline(file_bytes, body.config)

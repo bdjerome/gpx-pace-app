@@ -198,7 +198,7 @@
                 color="primary"
                 block
                 :loading="analysis.isLoading"
-                :disabled="!analysis.gpxFile && !analysis.templateId"
+                :disabled="!analysis.gpxFile && !analysis.templateId && !analysis.gpxFileId"
                 prepend-icon="mdi-play"
               >
                 Analyze Route
@@ -357,14 +357,28 @@
     <!-- Save Plan Dialog -->
     <v-dialog v-model="saveDialog" max-width="400">
       <v-card>
-        <v-card-title>Save Race Plan</v-card-title>
+        <v-card-title>{{ selectedPlanId ? 'Update Plan' : 'Save Plan' }}</v-card-title>
         <v-card-text>
           <v-text-field v-model="saveName" label="Plan name" autofocus density="compact" />
         </v-card-text>
         <v-card-actions>
           <v-spacer />
           <v-btn variant="text" @click="saveDialog = false">Cancel</v-btn>
-          <v-btn color="primary" :loading="isSaving" @click="confirmSave">Save</v-btn>
+          <v-btn
+            v-if="selectedPlanId"
+            variant="outlined"
+            :loading="isSaving"
+            @click="confirmSave('create')"
+          >
+            Save as New
+          </v-btn>
+          <v-btn
+            color="primary"
+            :loading="isSaving"
+            @click="confirmSave(selectedPlanId ? 'update' : 'create')"
+          >
+            {{ selectedPlanId ? 'Update' : 'Save' }}
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -381,6 +395,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAnalysisStore } from '@/stores/analysis'
 import { useAuthStore } from '@/stores/auth'
 import { usePlansStore } from '@/stores/plans'
@@ -391,6 +406,7 @@ import type { AnalyzeConfig, CustomMarker } from '@/types'
 const analysis = useAnalysisStore()
 const auth = useAuthStore()
 const plans = usePlansStore()
+const route = useRoute()
 
 // ─── File handling ─────────────────────────────────────────────────────────
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -482,7 +498,7 @@ async function loadPlan(id: string | null) {
   if (!id) return
   try {
     const { data } = await plansApi.get(id)
-    const c = data.config
+    const c = data.plan.config
     config.value = {
       loops: c.loops,
       base_pace: c.pace,
@@ -492,8 +508,17 @@ async function loadPlan(id: string | null) {
       pace_unit: c.pace_unit as 'min/km' | 'min/mile',
       custom_markers: (c.markers as CustomMarker[]) ?? [],
     }
-    // Trigger analysis automatically
-    await submitAnalysis()
+    // Restore the GPX source so the Analyze button is enabled for re-runs
+    if (data.plan.template_gpx_file_id) {
+      const tmpl = plans.templates.find((t) => t.id === data.plan.template_gpx_file_id)
+      analysis.setTemplateId(data.plan.template_gpx_file_id, tmpl?.file_name)
+      selectedTemplateId.value = data.plan.template_gpx_file_id
+    } else if (data.plan.gpx_file_id) {
+      const planSummary = plans.plans.find((p) => p.id === id)
+      analysis.setGpxFileId(data.plan.gpx_file_id, planSummary?.gpx_filename ?? undefined)
+    }
+    // Load results directly — backend already re-ran the analysis
+    analysis.result = data.analysis
   } catch {
     // error handled by axios interceptor
   }
@@ -585,48 +610,79 @@ function showSnackbar(message: string, color: 'success' | 'error') {
 }
 
 function openSaveDialog() {
-  saveName.value = analysis.gpxFilename?.replace('.gpx', '') ?? ''
+  if (selectedPlanId.value) {
+    const plan = plans.plans.find((p) => p.id === selectedPlanId.value)
+    saveName.value = plan?.nickname ?? analysis.gpxFilename?.replace('.gpx', '') ?? ''
+  } else {
+    saveName.value = analysis.gpxFilename?.replace('.gpx', '') ?? ''
+  }
   saveDialog.value = true
 }
 
-async function confirmSave() {
+async function confirmSave(mode: 'create' | 'update' = 'create') {
   if (!saveName.value) return
   isSaving.value = true
   try {
-    // Resolve the file reference the backend needs.
-    // Template path: we already have the id from the analysis store.
-    // Upload path: upload now (auth-gated endpoint) to get a stored file_id.
-    let gpxFileId: string | undefined
-    let templateGpxFileId: string | undefined
-
-    if (analysis.templateId) {
-      templateGpxFileId = analysis.templateId
-    } else if (analysis.gpxFile) {
-      const { data } = await gpxApi.upload(analysis.gpxFile)
-      gpxFileId = data.file_id
+    if (mode === 'update' && selectedPlanId.value) {
+      // Update the existing plan's nickname + config only; GPX source stays the same.
+      await plans.updatePlan(selectedPlanId.value, {
+        nickname: saveName.value,
+        config: {
+          pace: config.value.base_pace,
+          pace_unit: config.value.pace_unit,
+          loops: config.value.loops,
+          start_time: config.value.race_start_time,
+          decay_enabled: config.value.decay,
+          hills_enabled: config.value.hill_mode,
+          markers: config.value.custom_markers,
+        },
+      })
+      if (plans.error) {
+        showSnackbar(plans.error, 'error')
+      } else {
+        saveDialog.value = false
+        showSnackbar('Plan updated successfully!', 'success')
+      }
     } else {
-      return // nothing to save
-    }
+      // Create a new plan — resolve the GPX source reference.
+      let gpxFileId: string | undefined
+      let templateGpxFileId: string | undefined
 
-    await plans.savePlan({
-      nickname: saveName.value,
-      gpx_file_id: gpxFileId,
-      template_gpx_file_id: templateGpxFileId,
-      config: {
-        pace: config.value.base_pace,
-        pace_unit: config.value.pace_unit,
-        loops: config.value.loops,
-        start_time: config.value.race_start_time,
-        decay_enabled: config.value.decay,
-        hills_enabled: config.value.hill_mode,
-        markers: config.value.custom_markers,
-      },
-    })
-    if (plans.error) {
-      showSnackbar(plans.error, 'error')
-    } else {
-      saveDialog.value = false
-      showSnackbar('Plan saved successfully!', 'success')
+      if (analysis.templateId) {
+        templateGpxFileId = analysis.templateId
+      } else if (analysis.gpxFileId) {
+        // Already stored on the server from a previously loaded plan
+        gpxFileId = analysis.gpxFileId
+      } else if (analysis.gpxFile) {
+        const { data } = await gpxApi.upload(analysis.gpxFile)
+        gpxFileId = data.file_id
+      } else {
+        return // nothing to save
+      }
+
+      const newId = await plans.savePlan({
+        nickname: saveName.value,
+        gpx_file_id: gpxFileId,
+        template_gpx_file_id: templateGpxFileId,
+        config: {
+          pace: config.value.base_pace,
+          pace_unit: config.value.pace_unit,
+          loops: config.value.loops,
+          start_time: config.value.race_start_time,
+          decay_enabled: config.value.decay,
+          hills_enabled: config.value.hill_mode,
+          markers: config.value.custom_markers,
+        },
+      })
+      if (!newId) {
+        showSnackbar(plans.error ?? 'Failed to save plan.', 'error')
+      } else {
+        // Point the "Load a saved plan" dropdown at the newly created plan so
+        // subsequent "Save Plan" opens in Update mode for the fork.
+        selectedPlanId.value = newId
+        saveDialog.value = false
+        showSnackbar('Plan saved successfully!', 'success')
+      }
     }
   } finally {
     isSaving.value = false
@@ -634,9 +690,17 @@ async function confirmSave() {
 }
 
 // ─── Init ───────────────────────────────────────────────────────────────────
-onMounted(() => {
-  plans.fetchTemplates()                        // available to all users
-  if (auth.isAuthenticated) plans.fetchPlans()  // saved plans require auth
+onMounted(async () => {
+  await Promise.all([
+    plans.fetchTemplates(),
+    auth.isAuthenticated ? plans.fetchPlans() : Promise.resolve(),
+  ])
+  // If navigated here from PlansView, load the requested plan into local state.
+  const planId = route.query.planId as string | undefined
+  if (planId) {
+    selectedPlanId.value = planId
+    await loadPlan(planId)
+  }
 })
 </script>
 
