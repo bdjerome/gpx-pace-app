@@ -551,8 +551,9 @@ const summaryCards = computed(() => {
 })
 
 function formatPace(minPerKm: number): string {
-  const m = Math.floor(minPerKm)
-  const s = Math.round((minPerKm - m) * 60)
+  let m = Math.floor(minPerKm)
+  let s = Math.round((minPerKm - m) * 60)
+  if (s === 60) { m += 1; s = 0 }
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 

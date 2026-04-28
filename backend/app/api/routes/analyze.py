@@ -163,6 +163,12 @@ def _run_analysis_pipeline(file_bytes: bytes, config: AnalyzeConfig) -> AnalyzeR
     start_time = _parse_time(config.race_start_time)
     use_km = config.pace_unit == "min/km"
 
+    # The pipeline always works in km internally (distances, grade, segment times).
+    # When the user supplies a min/mile pace we must convert it to min/km first,
+    # otherwise segment_time = segment_distance_km * pace is computed in the wrong unit.
+    if not use_km:
+        base_pace_float /= 1.60934  # min/mile → min/km
+
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".gpx", delete=False) as tmp:
