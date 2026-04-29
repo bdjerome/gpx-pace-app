@@ -271,6 +271,16 @@
             <!-- Save / PDF actions -->
             <v-spacer />
             <v-btn
+              v-if="selectedPlanId"
+              variant="text"
+              prepend-icon="mdi-share-variant-outline"
+              size="small"
+              class="mr-2"
+              @click="copyShareLink"
+            >
+              Copy Share Link
+            </v-btn>
+            <v-btn
               v-if="auth.isAuthenticated"
               variant="outlined"
               prepend-icon="mdi-content-save-outline"
@@ -677,6 +687,12 @@ function openSaveDialog() {
     saveName.value = analysis.gpxFilename?.replace('.gpx', '') ?? ''
   }
   saveDialog.value = true
+}
+
+function copyShareLink() {
+  const url = `${window.location.origin}/share/${selectedPlanId.value}`
+  navigator.clipboard.writeText(url)
+  showSnackbar('Share link copied to clipboard!', 'success')
 }
 
 async function confirmSave(mode: 'create' | 'update' = 'create') {

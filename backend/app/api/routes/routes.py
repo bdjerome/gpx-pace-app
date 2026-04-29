@@ -245,6 +245,54 @@ async def get_race_plan(
 
 
 # ---------------------------------------------------------------------------
+# GET /routes/{id}/share — Public read-only view of a saved plan
+# ---------------------------------------------------------------------------
+
+@router.get("/{plan_id}/share", response_model=PlanWithAnalysis)
+async def get_race_plan_share(
+    plan_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> PlanWithAnalysis:
+    """Return a full plan analysis for public (unauthenticated) share links.
+
+    No ownership check — any caller with the plan UUID can view the result.
+    """
+    plan = await _get_plan_or_404(plan_id, db)
+
+    if plan.gpx_file:
+        gcs_path = plan.gpx_file.gcs_path
+    elif plan.template_gpx_file:
+        gcs_path = plan.template_gpx_file.gcs_path
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Race plan has no associated GPX file.",
+        )
+
+    try:
+        file_bytes = storage.download_gpx_file(gcs_path)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="The GPX file for this plan could not be found in storage.",
+        )
+
+    try:
+        analyze_config = _stored_config_to_analyze_config(plan.config)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Stored plan config is malformed: {exc}",
+        )
+
+    return PlanWithAnalysis(
+        plan=RacePlanRead.model_validate(plan),
+        analysis=_run_analysis_pipeline(file_bytes, analyze_config),
+        notes=[PlanNoteItem(km=n.km, note=n.note) for n in plan.notes],
+    )
+
+
+# ---------------------------------------------------------------------------
 # PUT /routes/{id} — Update a saved race plan
 # ---------------------------------------------------------------------------
 

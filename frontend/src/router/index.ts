@@ -30,6 +30,11 @@ const router = createRouter({
       name: 'tutorial',
       component: () => import('../views/TutorialView.vue'),
     },
+    {
+      path: '/share/:planId',
+      name: 'share',
+      component: () => import('../views/ShareView.vue'),
+    },
   ],
 })
 

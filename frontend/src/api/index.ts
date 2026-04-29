@@ -132,4 +132,8 @@ export const plansApi = {
   saveNotes(planId: string, notes: PlanNote[]) {
     return apiClient.put(`/routes/${planId}/notes`, { notes })
   },
+
+  getShare(planId: string) {
+    return apiClient.get<PlanWithAnalysis>(`/routes/${planId}/share`)
+  },
 }
