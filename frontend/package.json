@@ -16,6 +16,8 @@
   "dependencies": {
     "@mdi/font": "^7.4.47",
     "axios": "^1.15.2",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.7",
     "pinia": "^3.0.4",
     "plotly.js-dist-min": "^3.5.0",
     "vite-plugin-vuetify": "^2.1.3",
