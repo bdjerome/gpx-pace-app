@@ -22,7 +22,7 @@
 
       <v-app-bar-title>
         <RouterLink to="/" class="app-title">
-          <!-- <v-icon icon="mdi-map-marker-path" class="mr-2" /> -->
+          <img src="@/assets/logo.svg" alt="" class="app-logo mr-2" />
           Omne Enduro
         </RouterLink>
       </v-app-bar-title>
@@ -76,5 +76,10 @@ function handleLogout() {
   font-size: 1.1rem;
   display: flex;
   align-items: center;
+}
+.app-logo {
+  height: 28px;
+  width: auto;
+  display: block;
 }
 </style>
