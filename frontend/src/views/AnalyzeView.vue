@@ -265,6 +265,7 @@
               label="Imperial (miles)"
               density="compact"
               hide-details
+              color="primary"
               style="min-width: 140px; flex-shrink: 0"
             />
             <v-spacer class="d-none d-sm-block" />
