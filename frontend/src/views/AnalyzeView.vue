@@ -258,46 +258,44 @@
             </v-col>
           </v-row>
 
-          <!-- Unit toggle -->
-          <div class="d-flex align-center mb-3">
+          <!-- Unit toggle + actions -->
+          <div class="d-flex flex-wrap align-center gap-2 mb-3">
             <v-switch
               v-model="useImperial"
               label="Imperial (miles)"
               density="compact"
               hide-details
-              class="mr-4"
+              style="min-width: 140px; flex-shrink: 0"
             />
-
-            <!-- Save / PDF actions -->
-            <v-spacer />
-            <v-btn
-              v-if="selectedPlanId"
-              variant="text"
-              prepend-icon="mdi-share-variant-outline"
-              size="small"
-              class="mr-2"
-              @click="copyShareLink"
-            >
-              Copy Share Link
-            </v-btn>
-            <v-btn
-              v-if="auth.isAuthenticated"
-              variant="outlined"
-              prepend-icon="mdi-content-save-outline"
-              size="small"
-              class="mr-2"
-              @click="openSaveDialog"
-            >
-              Save Plan
-            </v-btn>
-            <v-btn
-              variant="outlined"
-              prepend-icon="mdi-file-pdf-box"
-              size="small"
-              @click="downloadPdf"
-            >
-              Download PDF
-            </v-btn>
+            <v-spacer class="d-none d-sm-block" />
+            <div class="d-flex flex-wrap gap-2">
+              <v-btn
+                v-if="selectedPlanId"
+                variant="text"
+                prepend-icon="mdi-share-variant-outline"
+                size="small"
+                @click="copyShareLink"
+              >
+                Copy Share Link
+              </v-btn>
+              <v-btn
+                v-if="auth.isAuthenticated"
+                variant="outlined"
+                prepend-icon="mdi-content-save-outline"
+                size="small"
+                @click="openSaveDialog"
+              >
+                Save Plan
+              </v-btn>
+              <v-btn
+                variant="outlined"
+                prepend-icon="mdi-file-pdf-box"
+                size="small"
+                @click="downloadPdf"
+              >
+                Download PDF
+              </v-btn>
+            </div>
           </div>
 
           <!-- Map iframe -->
@@ -350,7 +348,7 @@
           </v-row>
 
           <!-- Split table -->
-          <v-card elevation="1">
+          <v-card elevation="1" class="split-table-card">
             <v-card-title class="text-subtitle-2 py-2 px-4">
               <v-icon icon="mdi-table" class="mr-1" />
               Split Table
@@ -375,14 +373,18 @@
                 </span>
               </template>
               <template #item.note="{ item }">
-                <v-text-field
-                  :model-value="item.note"
-                  density="compact"
-                  hide-details
-                  placeholder="Add note…"
-                  variant="plain"
-                  @update:model-value="(v) => analysis.setNote(item.km, v)"
-                />
+                <div class="note-cell">
+                  <v-textarea
+                    :model-value="item.note"
+                    density="compact"
+                    hide-details
+                    placeholder="Add note…"
+                    variant="plain"
+                    auto-grow
+                    rows="1"
+                    @update:model-value="(v) => analysis.setNote(item.km, v)"
+                  />
+                </div>
               </template>
             </v-data-table>
           </v-card>
@@ -819,5 +821,17 @@ onMounted(async () => {
 }
 .marker-table :deep(.v-data-table__td) {
   padding: 2px 4px !important;
+}
+
+/* Split table — horizontal scroll on mobile */
+.split-table-card :deep(.v-table__wrapper) {
+  overflow-x: auto;
+}
+
+/* Notes column — allow text to wrap instead of truncating */
+.split-table-card :deep(.note-cell) {
+  min-width: 160px;
+  white-space: normal;
+  word-break: break-word;
 }
 </style>
