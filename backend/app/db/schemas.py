@@ -168,18 +168,35 @@ class SummaryStats(BaseModel):
     elevation_loss_m: float
 
 
+class ChartPoint(BaseModel):
+    """A single (x, y) data point for chart rendering. Always in metric units."""
+    x: float  # distance_km
+    y: float  # elevation_m  OR  pace_min_per_km
+
+
 class AnalyzeResponse(BaseModel):
     split_table: list[SplitRow]
     summary: SummaryStats
     map_html: str
-    elevation_chart_json: Optional[str] = None  # None when GPX has no elevation data
-    pace_chart_json: Optional[str] = None
+    elevation_chart_data: Optional[list[ChartPoint]] = None  # None when GPX has no elevation
+    pace_chart_data: Optional[list[ChartPoint]] = None
+
+
+class PlanNoteItem(BaseModel):
+    """A single (km, note) pair for plan-specific split table notes."""
+    km: int
+    note: str
+
+
+class PlanNotesUpdate(BaseModel):
+    notes: list[PlanNoteItem]
 
 
 class PlanWithAnalysis(BaseModel):
     """Combined response returned by GET /routes/{id}: stored plan config + fresh analysis."""
     plan: RacePlanRead
     analysis: AnalyzeResponse
+    notes: list[PlanNoteItem] = []
 
 
 # ---------------------------------------------------------------------------

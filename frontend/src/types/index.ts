@@ -70,12 +70,17 @@ export interface SummaryStats {
   elevation_loss_m: number
 }
 
+export interface ChartPoint {
+  x: number // distance_km
+  y: number // elevation_m OR pace_min_per_km
+}
+
 export interface AnalyzeResponse {
   split_table: SplitRow[]
   summary: SummaryStats
   map_html: string
-  elevation_chart_json: string | null
-  pace_chart_json: string | null
+  elevation_chart_data: ChartPoint[] | null
+  pace_chart_data: ChartPoint[] | null
 }
 
 // ---------------------------------------------------------------------------
@@ -137,9 +142,15 @@ export interface RacePlanRead {
   updated_at: string
 }
 
+export interface PlanNote {
+  km: number
+  note: string
+}
+
 export interface PlanWithAnalysis {
   plan: RacePlanRead
   analysis: AnalyzeResponse
+  notes: PlanNote[]
 }
 
 // ---------------------------------------------------------------------------

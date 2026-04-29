@@ -120,13 +120,14 @@
                 label="Enable fatigue decay"
                 density="compact"
                 hide-details
+                class="mb-2"
               />
               <v-checkbox
                 v-model="config.hill_mode"
                 label="Enable hill adjustments"
                 density="compact"
                 hide-details
-                class="mb-3"
+                class="mb-2"
               />
 
               <!-- Custom Markers -->
@@ -136,6 +137,13 @@
                     Custom Markers ({{ config.custom_markers.length }})
                   </v-expansion-panel-title>
                   <v-expansion-panel-text>
+                    <v-checkbox
+                      v-model="markersOnly"
+                      label="Show only custom markers in split table"
+                      density="compact"
+                      class="text-caption"
+                      hide-details
+                    />
                     <v-data-table
                       :headers="markerHeaders"
                       :items="config.custom_markers"
@@ -299,7 +307,12 @@
               <v-card elevation="1">
                 <v-card-title class="text-subtitle-2 py-2 px-4">Elevation Profile</v-card-title>
                 <v-card-text class="pa-2">
-                  <PlotlyChart :figure-json="analysis.result.elevation_chart_json" :height="250" />
+                  <PlotlyChart
+                    :chart-data="elevationChartData"
+                    :x-label="elevationXLabel"
+                    :y-label="elevationYLabel"
+                    :height="300"
+                  />
                 </v-card-text>
               </v-card>
             </v-col>
@@ -307,7 +320,12 @@
               <v-card elevation="1">
                 <v-card-title class="text-subtitle-2 py-2 px-4">Pace Profile</v-card-title>
                 <v-card-text class="pa-2">
-                  <PlotlyChart :figure-json="analysis.result.pace_chart_json" :height="250" />
+                  <PlotlyChart
+                    :chart-data="paceChartData"
+                    :x-label="paceXLabel"
+                    :y-label="paceYLabel"
+                    :height="300"
+                  />
                 </v-card-text>
               </v-card>
             </v-col>
@@ -448,6 +466,8 @@ const markerHeaders = [
   { title: '', key: 'actions', width: '40px', sortable: false },
 ]
 
+const markersOnly = ref(false)
+
 function addMarker() {
   config.value.custom_markers.push({ distance: 0, nickname: '', cutoff_time: undefined })
 }
@@ -519,6 +539,8 @@ async function loadPlan(id: string | null) {
     }
     // Load results directly — backend already re-ran the analysis
     analysis.result = data.analysis
+    analysis.activePlanId = id
+    analysis.loadNotes(data.notes ?? [])
   } catch {
     // error handled by axios interceptor
   }
@@ -536,7 +558,7 @@ const summaryCards = computed(() => {
     ? `${(s.total_distance_km * KM_TO_MILE).toFixed(1)} mi`
     : `${s.total_distance_km.toFixed(1)} km`
   const pace = useImperial.value
-    ? formatPaceImperial(s.avg_pace_min_per_km)
+    ? `${formatPaceImperial(s.avg_pace_min_per_km)} /mi`
     : `${formatPace(s.avg_pace_min_per_km)} /km`
 
     const elevation = useImperial.value
@@ -559,21 +581,52 @@ function formatPace(minPerKm: number): string {
 
 function formatPaceImperial(minPerKm: number): string {
   const minPerMile = minPerKm / KM_TO_MILE
-  return `${formatPace(minPerMile)} /mi`
+  return `${formatPace(minPerMile)}`
 }
+
+// ─── Chart data (computed so unit toggle triggers re-render) ───────────────
+const elevationChartData = computed(() => {
+  const raw = analysis.result?.elevation_chart_data
+  if (!raw) return null
+  return useImperial.value
+    ? raw.map((p) => ({ x: p.x * KM_TO_MILE, y: p.y * M_TO_FT }))
+    : raw
+})
+
+const paceChartData = computed(() => {
+  const raw = analysis.result?.pace_chart_data
+  if (!raw) return null
+  return useImperial.value
+    ? raw.map((p) => ({ x: p.x * KM_TO_MILE, y: p.y / KM_TO_MILE }))
+    : raw
+})
+
+const elevationXLabel = computed(() => useImperial.value ? 'Distance (miles)' : 'Distance (km)')
+const elevationYLabel = computed(() => useImperial.value ? 'Elevation (ft)' : 'Elevation (m)')
+const paceXLabel = computed(() => useImperial.value ? 'Distance (miles)' : 'Distance (km)')
+const paceYLabel = computed(() => useImperial.value ? 'Pace (min/mile)' : 'Pace (min/km)')
 
 // ─── Split table ───────────────────────────────────────────────────────────
 const splitHeaders = computed(() => {
   const base = [
     { title: 'km', key: 'km', width: '48px' },
-    { title: 'Dist', key: 'total_distance_km', width: '70px' },
-    { title: 'Elev (m)', key: 'elevation_m', width: '80px' },
-    { title: 'Pace', key: 'pace_min_per_km', width: '70px' },
+    // Dist column will be inserted next
+    // { title: 'Elev (m)', key: 'elevation_m', width: '80px' },
+    { title: 'Pace', key: 'pace_min_per_km', width: '100px' },
     { title: 'Time', key: 'cumulative_time_hms', width: '90px' },
     { title: 'Clock', key: 'clock_time', width: '80px' },
     { title: 'Marker', key: 'custom_marker', width: '110px' },
     { title: 'Notes', key: 'note' },
   ]
+  // Insert Dist column after 'km'
+  base.splice(1, 0, useImperial.value
+    ? { title: 'Dist (mi)', key: 'total_distance_km', width: '70px' }
+    : { title: 'Dist (km)', key: 'total_distance_km', width: '70px' }
+  )
+  base.splice(2,0, useImperial.value
+    ? { title: 'Elev (ft)', key: 'elevation_m', width: '80px' }
+    : { title: 'Elev (m)', key: 'elevation_m', width: '80px' }
+  )
   const hasCutoffs = analysis.result?.split_table.some((r) => r.cutoff_time)
   if (hasCutoffs) {
     base.splice(7, 0, { title: 'Cutoff', key: 'cutoff_time', width: '80px' })
@@ -582,18 +635,24 @@ const splitHeaders = computed(() => {
   return base
 })
 
-const displayRows = computed(() =>
-  analysis.splitTableWithNotes().map((row) => ({
+const displayRows = computed(() => {
+  const rows = analysis.splitTableWithNotes()
+  const source = markersOnly.value
+    ? rows.filter((row, i) => i === 0 || i === rows.length - 1 || !!row.custom_marker)
+    : rows
+  return source.map((row) => ({
     ...row,
     total_distance_km: useImperial.value
-      ? (row.total_distance_km * KM_TO_MILE).toFixed(2)
+      ? (row.total_distance_km * KM_TO_MILE).toFixed()
       : row.total_distance_km.toFixed(2),
-    elevation_m: row.elevation_m.toFixed(0),
+    elevation_m: useImperial.value
+      ? (row.elevation_m * M_TO_FT).toFixed(0)
+      : row.elevation_m.toFixed(0),
     pace_min_per_km: useImperial.value
       ? formatPaceImperial(row.pace_min_per_km)
       : `${formatPace(row.pace_min_per_km)}`,
-  })),
-)
+  }))
+})
 
 // ─── Save plan ─────────────────────────────────────────────────────────────
 const saveDialog = ref(false)
@@ -681,7 +740,9 @@ async function confirmSave(mode: 'create' | 'update' = 'create') {
         // Point the "Load a saved plan" dropdown at the newly created plan so
         // subsequent "Save Plan" opens in Update mode for the fork.
         selectedPlanId.value = newId
+        analysis.activePlanId = newId
         saveDialog.value = false
+        await analysis.saveNotesNow()
         showSnackbar('Plan saved successfully!', 'success')
       }
     }

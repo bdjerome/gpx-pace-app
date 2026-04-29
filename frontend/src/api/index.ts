@@ -8,6 +8,7 @@ import type {
   GpxUploadResponse,
   AnalyzeConfig,
   AnalyzeResponse,
+  PlanNote,
   PlanWithAnalysis,
   RacePlanCreate,
   RacePlanUpdate,
@@ -126,5 +127,9 @@ export const plansApi = {
 
   pdf(id: string) {
     return apiClient.post(`/routes/${id}/pdf`, null, { responseType: 'blob' })
+  },
+
+  saveNotes(planId: string, notes: PlanNote[]) {
+    return apiClient.put(`/routes/${planId}/notes`, { notes })
   },
 }

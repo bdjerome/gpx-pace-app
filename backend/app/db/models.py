@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
 
-from sqlalchemy import CheckConstraint, ForeignKey, Numeric, Text, text
+from sqlalchemy import CheckConstraint, ForeignKey, Integer, Numeric, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -100,3 +100,23 @@ class RacePlan(Base):
     template_gpx_file: Mapped[Optional["TemplateGpxFile"]] = relationship(
         back_populates="race_plans"
     )
+    notes: Mapped[list["PlanNote"]] = relationship(
+        back_populates="plan", cascade="all, delete-orphan"
+    )
+
+
+class PlanNote(Base):
+    """Per-km notes attached to a saved race plan."""
+
+    __tablename__ = "plan_notes"
+
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("race_plans.id", ondelete="CASCADE"),
+        primary_key=True,
+        nullable=False,
+    )
+    km: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    note: Mapped[str] = mapped_column(Text, nullable=False)
+
+    plan: Mapped["RacePlan"] = relationship(back_populates="notes")

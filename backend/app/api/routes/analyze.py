@@ -16,8 +16,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.gpx.misc_functions import (
     calculate_time_difference,
     merge_custom_markers,
-    plotly_elevation_plot,
-    plotly_pace_plot,
 )
 from app.core.gpx.pace_planner import GPXAnalyzer, MapVisualizer, PaceCalculator
 from app.api.deps import get_current_user
@@ -211,15 +209,26 @@ def _run_analysis_pipeline(file_bytes: bytes, config: AnalyzeConfig) -> AnalyzeR
         map_viz.add_kilometer_markers_directional()
         map_html: str = map_viz.map.get_root().render()
 
-        # 6. Charts
+        # 6. Raw chart data (always metric — frontend converts units and re-renders)
         total_gain = float(
             analyzer.final_df["elevation"].diff().clip(lower=0).sum()
         )
-        elev_fig = plotly_elevation_plot(analyzer, total_gain, use_metric=use_km)
-        pace_fig = plotly_pace_plot(analyzer.final_df, use_metric=use_km)
 
-        elevation_chart_json = elev_fig.to_json() if elev_fig is not None else None
-        pace_chart_json = pace_fig.to_json() if pace_fig is not None else None
+        elevation_chart_data = None
+        elev_df = analyzer.final_df[["total_distance", "elevation"]].dropna(subset=["elevation"])
+        if total_gain > 0 and len(elev_df) > 0:
+            elevation_chart_data = [
+                {"x": round(float(x), 4), "y": round(float(y), 2)}
+                for x, y in zip(elev_df["total_distance"], elev_df["elevation"])
+            ]
+
+        pace_chart_data = None
+        pace_df = analyzer.final_df[["total_distance", "pace"]].dropna(subset=["pace"])
+        if len(pace_df) > 1:
+            pace_chart_data = [
+                {"x": round(float(x), 4), "y": round(float(y), 4)}
+                for x, y in zip(pace_df["total_distance"], pace_df["pace"])
+            ]
 
         # 7. Serialise results
         split_table = _build_split_table(analyzer.final_df)
@@ -233,8 +242,8 @@ def _run_analysis_pipeline(file_bytes: bytes, config: AnalyzeConfig) -> AnalyzeR
         split_table=split_table,
         summary=summary,
         map_html=map_html,
-        elevation_chart_json=elevation_chart_json,
-        pace_chart_json=pace_chart_json,
+        elevation_chart_data=elevation_chart_data,
+        pace_chart_data=pace_chart_data,
     )
 
 

@@ -3,17 +3,19 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.api.routes.analyze import _run_analysis_pipeline
-from app.db.models import GpxFile, RacePlan, TemplateGpxFile, User
+from app.db.models import GpxFile, PlanNote, RacePlan, TemplateGpxFile, User
 from app.db.schemas import (
     AnalyzeConfig,
     AnalyzeResponse,
     CustomMarker,
+    PlanNoteItem,
+    PlanNotesUpdate,
     PlanWithAnalysis,
     RacePlanCreate,
     RacePlanRead,
@@ -78,6 +80,7 @@ async def _get_plan_or_404(plan_id: uuid.UUID, db: AsyncSession) -> RacePlan:
         .options(
             selectinload(RacePlan.gpx_file),
             selectinload(RacePlan.template_gpx_file),
+            selectinload(RacePlan.notes),
         )
     )
     plan = result.scalar_one_or_none()
@@ -237,6 +240,7 @@ async def get_race_plan(
     return PlanWithAnalysis(
         plan=RacePlanRead.model_validate(plan),
         analysis=_run_analysis_pipeline(file_bytes, analyze_config),
+        notes=[PlanNoteItem(km=n.km, note=n.note) for n in plan.notes],
     )
 
 
@@ -344,3 +348,30 @@ async def delete_race_plan(
                 await db.delete(gpx_file)
                 await db.commit()
             storage.delete_gpx_file(gcs_path)
+
+
+# ---------------------------------------------------------------------------
+# PUT /routes/{id}/notes — Bulk-replace notes for a saved plan
+# ---------------------------------------------------------------------------
+
+@router.put("/{plan_id}/notes", response_model=list[PlanNoteItem])
+async def save_plan_notes(
+    plan_id: uuid.UUID,
+    body: PlanNotesUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[PlanNoteItem]:
+    """Bulk-replace all split-table notes for a saved race plan.
+
+    Deletes all existing notes for the plan and inserts the new set,
+    skipping entries with blank text. Ownership is verified before any writes.
+    """
+    plan = await _get_plan_or_404(plan_id, db)
+    _verify_ownership(plan, current_user)
+
+    await db.execute(delete(PlanNote).where(PlanNote.plan_id == plan_id))
+    for item in body.notes:
+        if item.note.strip():
+            db.add(PlanNote(plan_id=plan_id, km=item.km, note=item.note))
+    await db.commit()
+    return [item for item in body.notes if item.note.strip()]

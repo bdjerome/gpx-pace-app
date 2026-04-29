@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { analyzeApi } from '@/api'
-import type { AnalyzeConfig, AnalyzeResponse, SplitRow } from '@/types'
+import { analyzeApi, plansApi } from '@/api'
+import type { AnalyzeConfig, AnalyzeResponse, PlanNote, SplitRow } from '@/types'
 
 export const useAnalysisStore = defineStore('analysis', () => {
   /** The GPX file currently loaded in the form */
@@ -20,8 +20,10 @@ export const useAnalysisStore = defineStore('analysis', () => {
   /** Per-row notes keyed by km number (not persisted to backend yet) */
   const rowNotes = ref<Record<number, string>>({})
 
+  const activePlanId = ref<string | null>(null)
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+  let _saveTimer: ReturnType<typeof setTimeout> | null = null
 
   function setGpxFile(file: File) {
     gpxFile.value = file
@@ -50,6 +52,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
   function clearResult() {
     result.value = null
     rowNotes.value = {}
+    activePlanId.value = null
     error.value = null
   }
 
@@ -61,8 +64,25 @@ export const useAnalysisStore = defineStore('analysis', () => {
     clearResult()
   }
 
+  function loadNotes(notes: PlanNote[]) {
+    rowNotes.value = {}
+    for (const n of notes) rowNotes.value[n.km] = n.note
+  }
+
   function setNote(km: number, note: string) {
     rowNotes.value[km] = note
+    if (!activePlanId.value) return
+    if (_saveTimer) clearTimeout(_saveTimer)
+    _saveTimer = setTimeout(() => saveNotesNow(), 600)
+  }
+
+  async function saveNotesNow() {
+    if (!activePlanId.value) return
+    if (_saveTimer) { clearTimeout(_saveTimer); _saveTimer = null }
+    const notes = Object.entries(rowNotes.value)
+      .filter(([, v]) => v.trim())
+      .map(([km, note]) => ({ km: Number(km), note }))
+    await plansApi.saveNotes(activePlanId.value, notes)
   }
 
   /** Enrich split_table with any notes stored locally */
@@ -106,6 +126,7 @@ export const useAnalysisStore = defineStore('analysis', () => {
     gpxFileId,
     result,
     rowNotes,
+    activePlanId,
     isLoading,
     error,
     setGpxFile,
@@ -113,7 +134,9 @@ export const useAnalysisStore = defineStore('analysis', () => {
     setGpxFileId,
     clearResult,
     clearAll,
+    loadNotes,
     setNote,
+    saveNotesNow,
     splitTableWithNotes,
     runAnalysis,
   }
