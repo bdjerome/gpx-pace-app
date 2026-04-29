@@ -7,7 +7,7 @@
       <v-col cols="12" md="4">
         <v-card elevation="2" class="mb-4">
           <v-card-title class="text-subtitle-1 font-weight-bold py-3 px-4 bg-grey-lighten-4">
-            <v-icon icon="mdi-map-marker-path" class="mr-2" />
+            <!-- <v-icon icon="mdi-map-marker-path" class="mr-2" /> -->
             Route Selection
           </v-card-title>
           <v-card-text>
@@ -290,6 +290,14 @@
             >
               Save Plan
             </v-btn>
+            <v-btn
+              variant="outlined"
+              prepend-icon="mdi-file-pdf-box"
+              size="small"
+              @click="downloadPdf"
+            >
+              Download PDF
+            </v-btn>
           </div>
 
           <!-- Map iframe -->
@@ -429,6 +437,7 @@ import { useAuthStore } from '@/stores/auth'
 import { usePlansStore } from '@/stores/plans'
 import { plansApi, gpxApi } from '@/api'
 import PlotlyChart from '@/components/PlotlyChart.vue'
+import { generatePdf } from '@/composables/usePdfExport'
 import type { AnalyzeConfig, CustomMarker } from '@/types'
 
 const analysis = useAnalysisStore()
@@ -693,6 +702,21 @@ function copyShareLink() {
   const url = `${window.location.origin}/share/${selectedPlanId.value}`
   navigator.clipboard.writeText(url)
   showSnackbar('Share link copied to clipboard!', 'success')
+}
+
+function downloadPdf() {
+  if (!analysis.result) return
+  const routeName = selectedPlanId.value
+    ? (plans.plans.find((p) => p.id === selectedPlanId.value)?.nickname ?? analysis.gpxFilename?.replace('.gpx', '') ?? 'GPX Analysis')
+    : (analysis.gpxFilename?.replace('.gpx', '') ?? 'GPX Analysis')
+  generatePdf({
+    routeName,
+    summary: analysis.result.summary,
+    splits: analysis.result.split_table,
+    noteMap: { ...analysis.rowNotes },
+    useImperial: useImperial.value,
+    markersOnly: markersOnly.value,
+  })
 }
 
 async function confirmSave(mode: 'create' | 'update' = 'create') {

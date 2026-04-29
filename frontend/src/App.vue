@@ -3,16 +3,16 @@
     <v-app-bar color="primary" elevation="2">
       <v-app-bar-title>
         <RouterLink to="/" class="app-title">
-          <v-icon icon="mdi-map-marker-path" class="mr-2" />
-          GPX Pace Planner
+          <!-- <v-icon icon="mdi-map-marker-path" class="mr-2" /> -->
+          Omne Enduro
         </RouterLink>
       </v-app-bar-title>
 
       <template #append>
-        <v-btn :to="{ name: 'analyze' }" variant="text" prepend-icon="mdi-run-fast">
+        <v-btn :to="{ name: 'analyze' }" variant="text">
           Analyze
         </v-btn>
-        <v-btn :to="{ name: 'tutorial' }" variant="text" prepend-icon="mdi-book-open-outline">
+        <v-btn :to="{ name: 'tutorial' }" variant="text">
           Tutorial
         </v-btn>
 

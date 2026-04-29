@@ -28,6 +28,15 @@
             Shared Race Plan
           </v-chip>
         </div>
+        <v-spacer />
+        <v-btn
+          prepend-icon="mdi-file-pdf-box"
+          variant="tonal"
+          color="primary"
+          @click="downloadPdf()"
+        >
+          Download PDF
+        </v-btn>
       </div>
 
       <!-- Summary cards -->
@@ -149,6 +158,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { generatePdf } from '@/composables/usePdfExport'
 import { plansApi } from '@/api'
 import PlotlyChart from '@/components/PlotlyChart.vue'
 import type { PlanWithAnalysis } from '@/types'
@@ -299,4 +309,22 @@ const displayRows = computed(() => {
       : formatPace(row.pace_min_per_km),
   }))
 })
+
+// ── PDF generation ──────────────────────────────────────────────────────────
+
+function downloadPdf() {
+  if (!planData.value) return
+  const noteMap: Record<number, string> = {}
+  for (const n of planData.value.notes) noteMap[n.km] = n.note
+  generatePdf({
+    routeName: planData.value.plan.nickname,
+    summary: planData.value.analysis.summary,
+    splits: planData.value.analysis.split_table,
+    noteMap,
+    useImperial: useImperial.value,
+    markersOnly: markersOnly.value,
+  })
+}
 </script>
+
+
