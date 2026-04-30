@@ -34,6 +34,12 @@ export const authApi = {
   logout() {
     return authClient.post('/auth/logout')
   },
+  me() {
+    return apiClient.get<UserProfile>('/auth/me')
+  },
+  deleteAccount(userId: string) {
+    return apiClient.delete(`/auth/${userId}`)
+  },
 }
 
 // ---------------------------------------------------------------------------

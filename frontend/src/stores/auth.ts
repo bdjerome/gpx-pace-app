@@ -19,11 +19,15 @@ export const useAuthStore = defineStore('auth', () => {
   async function silentRefresh(): Promise<void> {
     const { data } = await authApi.refresh()
     accessToken.value = data.access_token
+    const profile = await authApi.me()
+    user.value = profile.data
   }
 
   async function login(credentials: LoginRequest): Promise<void> {
     const { data } = await authApi.login(credentials)
     accessToken.value = data.access_token
+    const profile = await authApi.me()
+    user.value = profile.data
   }
 
   async function register(payload: RegisterRequest): Promise<void> {

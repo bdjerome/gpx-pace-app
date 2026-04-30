@@ -1,13 +1,18 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from jose import JWTError
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_current_user
 from app.core import security
 from app.core.config import settings
-from app.db.models import User
+from app.db.models import GpxFile, User
 from app.db.schemas import LoginRequest, TokenResponse, UserCreate, UserRead
 from app.db.session import get_db
+from app.services import storage
+
 
 router = APIRouter()
 
@@ -116,3 +121,40 @@ async def refresh(request: Request) -> TokenResponse:
 async def logout(response: Response) -> None:
     """Clear the refresh-token cookie."""
     response.delete_cookie(key=_REFRESH_COOKIE, path="/")
+
+
+@router.get("/me", response_model=UserRead)
+async def me(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Return the profile of the currently authenticated user."""
+    return current_user
+
+#Delete user and all their associated data
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """Hard-delete a user and cascade all associated data (plans, notes, gpx_files).
+    Also removes any uploaded GPX files from storage.
+    """
+    if current_user.id != user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized.")
+
+    # Collect GCS paths before the user row (and cascaded gpx_files rows) are gone
+    result = await db.execute(select(GpxFile).where(GpxFile.user_id == user_id))
+    gpx_files = result.scalars().all()
+    gcs_paths = [f.gcs_path for f in gpx_files]
+
+    # One DELETE lets the DB CASCADE handle race_plans, plan_notes, gpx_files rows
+    await db.execute(delete(User).where(User.id == user_id))
+    await db.commit()
+
+    # Clean up storage files (best-effort; DB is already consistent)
+    for gcs_path in gcs_paths:
+        try:
+            storage.delete_gpx_file(gcs_path)
+        except Exception:
+            pass

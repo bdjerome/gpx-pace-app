@@ -71,7 +71,6 @@
         <!-- Analysis configuration -->
         <v-card elevation="2">
           <v-card-title class="text-subtitle-1 font-weight-bold py-3 px-4 bg-grey-lighten-4">
-            <v-icon icon="mdi-tune" class="mr-2" />
             Analysis Configuration
           </v-card-title>
           <v-card-text>
@@ -324,7 +323,7 @@
           <!-- Map iframe -->
           <v-card elevation="1" class="mb-4">
             <v-card-title class="text-subtitle-2 py-2 px-4">
-              <v-icon icon="mdi-map" class="mr-1" />
+              
               Route Map
             </v-card-title>
             <v-card-text class="pa-0">
@@ -373,7 +372,7 @@
           <!-- Split table -->
           <v-card elevation="1" class="split-table-card">
             <v-card-title class="text-subtitle-2 py-2 px-4">
-              <v-icon icon="mdi-table" class="mr-1" />
+              
               Split Table
             </v-card-title>
             <v-data-table
@@ -494,7 +493,6 @@ const config = ref<AnalyzeConfig>({
   loops: 1,
   base_pace: '5:30',
   race_start_time: '08:00',
-  race_date: new Date().toISOString().slice(0, 10),
   decay: false,
   hill_mode: false,
   pace_unit: 'min/km',

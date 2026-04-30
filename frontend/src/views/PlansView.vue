@@ -32,7 +32,7 @@
               @keyup.escape="cancelRename"
             />
           </template>
-          <span v-else>{{ item.nickname }}</span>
+          <a v-else class="plan-link" @click.prevent="loadPlan(item.id)">{{ item.nickname }}</a>
         </template>
 
         <template #item.gpx_filename="{ item }">
@@ -168,3 +168,15 @@ async function confirmDelete() {
   deleteDialog.value = false
 }
 </script>
+
+<style scoped>
+.plan-link {
+  cursor: pointer;
+  color: rgb(var(--v-theme-primary));
+  text-decoration: none;
+  font-weight: 500;
+}
+.plan-link:hover {
+  text-decoration: underline;
+}
+</style>
