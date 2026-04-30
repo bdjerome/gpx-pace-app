@@ -346,6 +346,7 @@
                 <v-card-title class="text-subtitle-2 py-2 px-4">Elevation Profile</v-card-title>
                 <v-card-text class="pa-2">
                   <PlotlyChart
+                    ref="elevationChartRef"
                     :chart-data="elevationChartData"
                     :x-label="elevationXLabel"
                     :y-label="elevationYLabel"
@@ -359,6 +360,7 @@
                 <v-card-title class="text-subtitle-2 py-2 px-4">Pace Profile</v-card-title>
                 <v-card-text class="pa-2">
                   <PlotlyChart
+                    ref="paceChartRef"
                     :chart-data="paceChartData"
                     :x-label="paceXLabel"
                     :y-label="paceYLabel"
@@ -462,12 +464,17 @@ import { usePlansStore } from '@/stores/plans'
 import { plansApi, gpxApi } from '@/api'
 import PlotlyChart from '@/components/PlotlyChart.vue'
 import { generatePdf } from '@/composables/usePdfExport'
+import Plotly from 'plotly.js-dist-min'
 import type { AnalyzeConfig, CustomMarker } from '@/types'
 
 const analysis = useAnalysisStore()
 const auth = useAuthStore()
 const plans = usePlansStore()
 const route = useRoute()
+
+// ─── Chart refs (for PDF export) ─────────────────────────────────────────
+const elevationChartRef = ref<{ getDiv: () => HTMLDivElement | null } | null>(null)
+const paceChartRef = ref<{ getDiv: () => HTMLDivElement | null } | null>(null)
 
 // ─── File handling ─────────────────────────────────────────────────────────
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -742,18 +749,33 @@ function copyShareLink() {
   showSnackbar('Share link copied to clipboard!', 'success')
 }
 
-function downloadPdf() {
+async function downloadPdf() {
   if (!analysis.result) return
   const routeName = selectedPlanId.value
     ? (plans.plans.find((p) => p.id === selectedPlanId.value)?.nickname ?? analysis.gpxFilename?.replace('.gpx', '') ?? 'GPX Analysis')
     : (analysis.gpxFilename?.replace('.gpx', '') ?? 'GPX Analysis')
-  generatePdf({
+
+  let elevationChartImg: string | undefined
+  let paceChartImg: string | undefined
+
+  const elevDiv = elevationChartRef.value?.getDiv()
+  if (elevDiv) {
+    try { elevationChartImg = await Plotly.toImage(elevDiv, { format: 'png', width: 700, height: 280 }) } catch {}
+  }
+  const paceDiv = paceChartRef.value?.getDiv()
+  if (paceDiv) {
+    try { paceChartImg = await Plotly.toImage(paceDiv, { format: 'png', width: 700, height: 280 }) } catch {}
+  }
+
+  await generatePdf({
     routeName,
     summary: analysis.result.summary,
     splits: analysis.result.split_table,
     noteMap: { ...analysis.rowNotes },
     useImperial: useImperial.value,
     markersOnly: markersOnly.value,
+    elevationChartImg,
+    paceChartImg,
   })
 }
 

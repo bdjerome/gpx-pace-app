@@ -52,4 +52,8 @@ watch([() => props.chartData, () => props.xLabel, () => props.yLabel], render)
 onBeforeUnmount(() => {
   if (chartDiv.value) Plotly.purge(chartDiv.value)
 })
+
+defineExpose({
+  getDiv: (): HTMLDivElement | null => chartDiv.value,
+})
 </script>
