@@ -10,7 +10,7 @@ import axios from 'axios'
  * cookie.
  */
 const authClient = axios.create({
-  baseURL: '/api',
+  baseURL: (import.meta.env.VITE_API_URL as string | undefined) ?? '/api',
   timeout: 10000,
   withCredentials: true,
 })

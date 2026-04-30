@@ -15,7 +15,7 @@ import type { TokenResponse } from '@/types'
 export const accessToken = ref<string | null>(null)
 
 const apiClient = axios.create({
-  baseURL: '/api',
+  baseURL: (import.meta.env.VITE_API_URL as string | undefined) ?? '/api',
   timeout: 60000,
   withCredentials: true, // sends the HttpOnly refresh-token cookie automatically
 })
