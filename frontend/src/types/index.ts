@@ -40,6 +40,7 @@ export interface AnalyzeConfig {
   loops: number
   base_pace: string // "M:SS" e.g. "5:30"
   race_start_time: string // "HH:MM"
+  race_date?: string // "YYYY-MM-DD"
   decay: boolean
   hill_mode: boolean
   pace_unit: 'min/km' | 'min/mile'
@@ -102,6 +103,7 @@ export interface RaceConfig {
   pace_unit: 'min/km' | 'min/mile'
   loops: number
   start_time: string
+  race_date?: string
   decay_enabled: boolean
   hills_enabled: boolean
   markers: CustomMarker[]

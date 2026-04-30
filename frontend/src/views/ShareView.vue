@@ -58,6 +58,7 @@
           v-model="useImperial"
           label="Imperial (miles)"
           density="compact"
+          color="primary"
           hide-details
         />
       </div>

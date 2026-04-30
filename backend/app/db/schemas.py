@@ -74,6 +74,7 @@ class RaceConfig(BaseModel):
     pace_unit: str                      # "min/km" | "min/mile"
     loops: int
     start_time: str                     # ISO time string e.g. "08:00"
+    race_date: Optional[str] = None      # ISO date string e.g. "2024-10-13", used for calendar integration
     decay_enabled: bool = False
     hills_enabled: bool = False
     markers: list[dict[str, Any]] = []

@@ -103,6 +103,28 @@
                 class="mb-2"
               />
 
+              <!-- Race date -->
+              <v-menu v-model="dateMenu" :close-on-content-click="false" min-width="auto">
+                <template #activator="{ props }">
+                  <v-text-field
+                    v-bind="props"
+                    :model-value="config.race_date"
+                    label="Race Date"
+                    prepend-inner-icon="mdi-calendar"
+                    readonly
+                    clearable
+                    density="compact"
+                    class="mb-2"
+                    @click:clear="config.race_date = undefined"
+                  />
+                </template>
+                <v-date-picker
+                  :model-value="raceDateObj"
+                  show-adjacent-months
+                  @update:model-value="onDateSelected"
+                />
+              </v-menu>
+
               <!-- Loops -->
               <v-number-input
                 v-model="config.loops"
@@ -472,6 +494,7 @@ const config = ref<AnalyzeConfig>({
   loops: 1,
   base_pace: '5:30',
   race_start_time: '08:00',
+  race_date: new Date().toISOString().slice(0, 10),
   decay: false,
   hill_mode: false,
   pace_unit: 'min/km',
@@ -480,6 +503,19 @@ const config = ref<AnalyzeConfig>({
 
 const paceRule = (v: string) => /^\d+:\d{2}$/.test(v) || 'Format: M:SS (e.g. 5:30)'
 const timeRule = (v: string) => /^\d{1,2}:\d{2}$/.test(v) || 'Format: HH:MM (e.g. 08:00)'
+
+// ─── Date picker ────────────────────────────────────────────────────────────
+const dateMenu = ref(false)
+
+const raceDateObj = computed(() => {
+  const d = config.value.race_date
+  return d ? new Date(d + 'T00:00:00') : new Date()
+})
+
+function onDateSelected(date: Date) {
+  config.value.race_date = date.toISOString().slice(0, 10)
+  dateMenu.value = false
+}
 
 const markerHeaders = [
   { title: 'Distance', key: 'distance', width: '90px' },
@@ -545,6 +581,7 @@ async function loadPlan(id: string | null) {
       loops: c.loops,
       base_pace: c.pace,
       race_start_time: c.start_time,
+      race_date: c.race_date ?? new Date().toISOString().slice(0, 10),
       decay: c.decay_enabled,
       hill_mode: c.hills_enabled,
       pace_unit: c.pace_unit as 'min/km' | 'min/mile',
@@ -735,6 +772,7 @@ async function confirmSave(mode: 'create' | 'update' = 'create') {
           pace_unit: config.value.pace_unit,
           loops: config.value.loops,
           start_time: config.value.race_start_time,
+          race_date: config.value.race_date,
           decay_enabled: config.value.decay,
           hills_enabled: config.value.hill_mode,
           markers: config.value.custom_markers,
@@ -772,6 +810,7 @@ async function confirmSave(mode: 'create' | 'update' = 'create') {
           pace_unit: config.value.pace_unit,
           loops: config.value.loops,
           start_time: config.value.race_start_time,
+          race_date: config.value.race_date,
           decay_enabled: config.value.decay,
           hills_enabled: config.value.hill_mode,
           markers: config.value.custom_markers,
