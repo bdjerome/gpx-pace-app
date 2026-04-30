@@ -89,6 +89,7 @@
             <v-card-title class="text-subtitle-2 py-2 px-4">Elevation Profile</v-card-title>
             <v-card-text class="pa-2">
               <PlotlyChart
+                ref="elevationChartRef"
                 :chart-data="elevationChartData"
                 :x-label="elevationXLabel"
                 :y-label="elevationYLabel"
@@ -102,6 +103,7 @@
             <v-card-title class="text-subtitle-2 py-2 px-4">Pace Profile</v-card-title>
             <v-card-text class="pa-2">
               <PlotlyChart
+                ref="paceChartRef"
                 :chart-data="paceChartData"
                 :x-label="paceXLabel"
                 :y-label="paceYLabel"
@@ -162,6 +164,7 @@ import { useRoute } from 'vue-router'
 import { generatePdf } from '@/composables/usePdfExport'
 import { plansApi } from '@/api'
 import PlotlyChart from '@/components/PlotlyChart.vue'
+import Plotly from 'plotly.js-dist-min'
 import type { PlanWithAnalysis } from '@/types'
 
 const route = useRoute()
@@ -173,6 +176,9 @@ const error = ref<string | null>(null)
 
 const useImperial = ref(false)
 const markersOnly = ref(false)
+
+const elevationChartRef = ref<{ getDiv: () => HTMLDivElement | null } | null>(null)
+const paceChartRef = ref<{ getDiv: () => HTMLDivElement | null } | null>(null)
 
 const KM_TO_MILE = 0.621371
 const M_TO_FT = 3.28084
@@ -313,17 +319,32 @@ const displayRows = computed(() => {
 
 // ── PDF generation ──────────────────────────────────────────────────────────
 
-function downloadPdf() {
+async function downloadPdf() {
   if (!planData.value) return
   const noteMap: Record<number, string> = {}
   for (const n of planData.value.notes) noteMap[n.km] = n.note
-  generatePdf({
+
+  let elevationChartImg: string | undefined
+  let paceChartImg: string | undefined
+
+  const elevDiv = elevationChartRef.value?.getDiv()
+  if (elevDiv) {
+    try { elevationChartImg = await Plotly.toImage(elevDiv, { format: 'png', width: 700, height: 280 }) } catch {}
+  }
+  const paceDiv = paceChartRef.value?.getDiv()
+  if (paceDiv) {
+    try { paceChartImg = await Plotly.toImage(paceDiv, { format: 'png', width: 700, height: 280 }) } catch {}
+  }
+
+  await generatePdf({
     routeName: planData.value.plan.nickname,
     summary: planData.value.analysis.summary,
     splits: planData.value.analysis.split_table,
     noteMap,
     useImperial: useImperial.value,
     markersOnly: markersOnly.value,
+    elevationChartImg,
+    paceChartImg,
   })
 }
 </script>

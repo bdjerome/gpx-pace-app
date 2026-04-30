@@ -41,14 +41,14 @@ const app = createApp(App)
 const pinia = createPinia()
 
 app.use(pinia)
-app.use(router)
 app.use(vuetify)
 
-// Attempt a silent token refresh before first render so that users with a
-// valid refresh-token cookie are immediately authenticated without a login
-// redirect. The error is intentionally swallowed — if the cookie is missing
-// or expired the user simply stays unauthenticated.
+// Attempt a silent token refresh BEFORE installing the router so that the
+// beforeEach guard sees the correct auth state on the initial navigation.
+// If the cookie is missing or expired the error is swallowed and the user
+// stays unauthenticated.
 const auth = useAuthStore()
 auth.silentRefresh().catch(() => {}).finally(() => {
+  app.use(router)
   app.mount('#app')
 })
