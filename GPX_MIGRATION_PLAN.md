@@ -347,7 +347,53 @@ Port the tutorial from `pages/tutorial.py` (Streamlit) to a static Vue component
 
 ## Phase 6: Deployment to Google Cloud
 
-### Step 19 — Containerize Both Services
+**Architecture decision:** Firebase Hosting for the frontend (static CDN, free tier, zero cold starts) + Cloud Run for the backend (FastAPI container, pay-per-use). A custom domain (e.g. `omneenduro.com`) is used so both services share the same registrable domain — meaning `SameSite=Lax` cookies work across `app.omneenduro.com` → `api.omneenduro.com` without any `SameSite=None` changes.
+
+**Expected monthly cost at low traffic (~$11–14/month):**
+| Service | Cost |
+|---|---|
+| Firebase Hosting | $0 (free tier covers any realistic SPA traffic) |
+| Cloud Run (backend) | $0–$2 (CPU-seconds billed only during requests) |
+| Cloud SQL `db-f1-micro` | ~$10 |
+| GCS (GPX file storage) | $0 (files are tiny, well within free tier) |
+| Custom domain | ~$1.50/month (~$18/year) |
+
+---
+
+### Step 19 — Run Alembic Migrations Against Cloud SQL
+
+Before any Cloud Run container is deployed, the database schema must be created. Alembic migrations run once from your local machine against the live Cloud SQL instance.
+
+**One-time setup — connect locally to Cloud SQL via the Auth Proxy:**
+
+1. Download the Cloud SQL Auth Proxy binary:
+```bash
+curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.11.0/cloud-sql-proxy.darwin.amd64
+chmod +x cloud-sql-proxy
+```
+
+2. Start the proxy (connects to your instance on `localhost:5432`):
+```bash
+./cloud-sql-proxy --port 5432 PROJECT:REGION:INSTANCE_NAME
+```
+
+3. In a second terminal, point Alembic at the proxied local port and run migrations:
+```bash
+cd backend
+# Temporarily override DATABASE_URL to use localhost (TCP, not socket)
+export DATABASE_URL="postgresql+asyncpg://USER:PASSWORD@localhost:5432/DBNAME"
+alembic upgrade head
+```
+
+4. Stop the proxy once migrations complete.
+
+After the initial deploy, subsequent migrations (schema changes) follow the same pattern: start the proxy locally, run `alembic upgrade head`, then redeploy the backend image.
+
+---
+
+### Step 20 — Containerize the Backend
+
+No frontend Dockerfile is needed — the frontend is deployed as static files to Firebase Hosting, not as a container.
 
 **Backend Dockerfile** (`backend/Dockerfile`):
 ```dockerfile
@@ -359,44 +405,207 @@ COPY ./app ./app
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
 ```
 
-**Frontend Dockerfile** (`frontend/Dockerfile`):
-```dockerfile
-FROM node:20-alpine AS build
-WORKDIR /app
-COPY package*.json .
-RUN npm ci
-COPY . .
-RUN npm run build
+No Nginx or frontend container is needed.
 
-FROM nginx:alpine
-COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 8080
+---
+
+### Step 21 — Environment Variables and Secrets
+
+**Backend — injected at Cloud Run deploy time via Secret Manager:**
+
+| Secret / Env Var | Where set | Notes |
+|---|---|---|
+| `DATABASE_URL` | GCP Secret Manager | Cloud SQL connection string |
+| `GCS_BUCKET_NAME` | GCP Secret Manager | Private GPX storage bucket name |
+| `JWT_SECRET` | GCP Secret Manager | Strong random value, never committed to git |
+| `CORS_ORIGIN` | GCP Secret Manager | Set to `https://app.omneenduro.com` (your Firebase domain) — controls which origin the backend allows cross-origin requests from |
+| `COOKIE_SECURE` | Cloud Run env var (plain) | `true` in production — ensures `Set-Cookie: Secure` flag is applied |
+
+Add all Secret Manager secrets to `app/core/config.py` via `pydantic-settings` so they are read from environment at startup.
+
+**Frontend — baked into the static build at CI time:**
+
+| Build-time env var | Value | Notes |
+|---|---|---|
+| `VITE_API_URL` | `https://api.omneenduro.com` | Injected during `npm run build` in Cloud Build. Already wired into both axios clients — falls back to `/api` (Vite proxy) in local dev automatically |
+
+`VITE_API_URL` is **not** a secret — it is a public URL baked into the JS bundle. Do not put it in Secret Manager; set it as a plain substitution variable in `cloudbuild.yaml`.
+
+---
+
+### Step 22 — Configure Cloud Build CI/CD
+
+`infra/cloudbuild.yaml` — on push to `main`:
+1. Build the backend Docker image and push to Google Artifact Registry
+2. Deploy the backend image to Cloud Run
+3. Run `npm ci && npm run build` for the frontend (with `VITE_API_URL` substituted in)
+4. Deploy the `dist/` folder to Firebase Hosting via `firebase deploy --only hosting`
+
+```yaml
+substitutions:
+  _REGION: us-central1
+  _PROJECT_ID: your-gcp-project
+  _API_URL: https://api.omneenduro.com
+  _FIREBASE_PROJECT: your-firebase-project
+
+steps:
+  # 1. Build backend image
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - $_REGION-docker.pkg.dev/$_PROJECT_ID/omne-enduro/backend:$COMMIT_SHA
+      - ./backend
+
+  # 2. Push backend image
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - $_REGION-docker.pkg.dev/$_PROJECT_ID/omne-enduro/backend:$COMMIT_SHA
+
+  # 3. Deploy backend to Cloud Run
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - omne-enduro-backend
+      - --image=$_REGION-docker.pkg.dev/$_PROJECT_ID/omne-enduro/backend:$COMMIT_SHA
+      - --region=$_REGION
+      - --platform=managed
+      - --allow-unauthenticated
+      - --set-secrets=DATABASE_URL=DATABASE_URL:latest,GCS_BUCKET_NAME=GCS_BUCKET_NAME:latest,JWT_SECRET=JWT_SECRET:latest,CORS_ORIGIN=CORS_ORIGIN:latest
+      - --set-env-vars=COOKIE_SECURE=true
+      - --min-instances=1
+      - --max-instances=10
+
+  # 4. Build frontend (VITE_API_URL injected here at build time)
+  - name: node:20-alpine
+    entrypoint: sh
+    args:
+      - -c
+      - cd frontend && npm ci && VITE_API_URL=$_API_URL npm run build
+
+  # 5. Deploy frontend to Firebase Hosting
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: sh
+    args:
+      - -c
+      - npm install -g firebase-tools && firebase deploy --only hosting --project $_FIREBASE_PROJECT --token $$FIREBASE_TOKEN
+    secretEnv:
+      - FIREBASE_TOKEN
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$_PROJECT_ID/secrets/FIREBASE_TOKEN/versions/latest
+      env: FIREBASE_TOKEN
 ```
 
-Write an `nginx.conf` that handles Vue Router's HTML5 history mode (all routes fall back to `index.html`) and proxies `/api/` requests to the backend service URL.
+Store build triggers in Cloud Build console connected to the GitHub repo. The `FIREBASE_TOKEN` (a CI deploy token from `firebase login:ci`) is stored in Secret Manager, not as a substitution variable.
 
-### Step 20 — Configure Cloud Build CI/CD
+---
 
-`infra/cloudbuild.yaml`:
-- On push to `main`: build both Docker images, push to Google Artifact Registry, deploy backend to Cloud Run, deploy frontend to Cloud Run (or Firebase Hosting)
-- Store build triggers in Cloud Build console connected to the GitHub repo
-- Use substitution variables for project ID, region, and service names
+### Step 23 — Deploy Backend to Cloud Run
 
-### Step 21 — Deploy Backend to Cloud Run
+```bash
+# One-time setup — create the Cloud Run service
+gcloud run deploy omne-enduro-backend \
+  --image=REGION-docker.pkg.dev/PROJECT/omne-enduro/backend:latest \
+  --region=us-central1 \
+  --platform=managed \
+  --allow-unauthenticated \
+  --set-secrets=DATABASE_URL=DATABASE_URL:latest,GCS_BUCKET_NAME=GCS_BUCKET_NAME:latest,JWT_SECRET=JWT_SECRET:latest,CORS_ORIGIN=CORS_ORIGIN:latest \
+  --set-env-vars=COOKIE_SECURE=true \
+  --min-instances=1 \
+  --max-instances=10 \
+  --add-cloudsql-instances=PROJECT:REGION:INSTANCE_NAME
+```
 
-- Create a Cloud Run service for the FastAPI backend
-- Set environment variables from Secret Manager: `DATABASE_URL`, `GCS_BUCKET_NAME`, `JWT_SECRET`, `CORS_ORIGIN`
-- Mount the Cloud SQL instance using the Cloud SQL Auth Proxy sidecar (built into Cloud Run via connection name)
-- Set min-instances to 1 (avoids cold start delay on first request)
+- **`--min-instances=1`** — keeps one warm instance alive to avoid cold start on first request. Adds ~$0–1/month within the free tier.
+- **`--max-instances=10`** — hard cap to prevent runaway scaling. At your traffic level you will never hit this, but it is the primary cost protection lever for Cloud Run.
+- **`--add-cloudsql-instances`** — connects to Cloud SQL via the built-in Auth Proxy (no public IP, no sidecar config needed).
+- Map the custom domain `api.omneenduro.com` to this service in the Cloud Run console (GCP provisions the SSL certificate automatically).
 
-### Step 22 — Deploy Frontend to Cloud Run or Firebase Hosting
+---
 
-Two options:
-- **Cloud Run** (Nginx container): More control, same infra as backend — deploy the frontend Docker image as a second Cloud Run service with a custom domain
-- **Firebase Hosting**: Simpler for a static Vue build; `firebase deploy` after `npm run build`; automatically handles CDN, HTTPS, and custom domains
+### Step 24 — Set Up Firebase Hosting via the Firebase Console
 
-Recommended: **Firebase Hosting** for the frontend — it's purpose-built for SPAs, handles the Vue Router fallback configuration automatically, and integrates well with GCP.
+**One-time project setup in the Firebase Console:**
+
+1. Go to [console.firebase.google.com](https://console.firebase.google.com) and click **Add project**
+2. Select your existing GCP project from the dropdown (Firebase and GCP share the same project)
+3. Once the project loads, click **Hosting** in the left sidebar → **Get started**
+4. Follow the on-screen wizard — it will walk through the setup steps (you can skip the CLI steps shown there; Cloud Build handles deploys)
+5. Your Hosting site will be provisioned at `YOUR_PROJECT_ID.web.app`
+
+**Add your custom domain (`app.omneenduro.com`):**
+
+1. In the Firebase console → Hosting → your site → **Add custom domain**
+2. Enter `app.omneenduro.com`
+3. Firebase will show you two DNS records (TXT for ownership verification, then A records for routing)
+4. Add those records to your DNS provider (Google Domains, Cloudflare, etc.)
+5. Firebase automatically provisions and renews the SSL certificate — no further action needed
+
+**`firebase.json` — required in the repo root for Cloud Build deploys:**
+
+Create this file so that `firebase deploy` (called from Cloud Build) knows where to find the built files and how to handle Vue Router's HTML5 history mode:
+
+```json
+{
+  "hosting": {
+    "public": "frontend/dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
+```
+
+All future deploys happen automatically via Cloud Build on push to `main` (Step 22). You do not need to interact with the Firebase console again after the initial domain setup.
+
+---
+
+### Step 25 — Budget Alerts and Instance Throttling
+
+**GCP Budget Alert (hard spending cap notification):**
+
+1. GCP Console → Billing → Budgets & Alerts → Create Budget
+2. Set a monthly budget of **$20** (buffer above the expected ~$12)
+3. Configure alerts at **50%** ($10), **90%** ($18), and **100%** ($20)
+4. Enable **"Link to a project"** and check **"Email alerts to billing admins"**
+
+> ⚠️ GCP budget alerts are **notifications only** — they do not automatically stop services. To enforce a hard cap you need to act on the alert or use the programmatic approach below.
+
+**Programmatic hard cap via Cloud Pub/Sub + Cloud Function (optional but recommended):**
+
+GCP supports wiring a budget alert to a Pub/Sub topic → Cloud Function that disables billing on the project if the threshold is crossed. This is the only way to truly stop charges automatically.
+
+Steps:
+1. In your budget, enable **"Connect a Pub/Sub topic"** → create topic `billing-alerts`
+2. Deploy a Cloud Function subscribed to that topic that calls `cloudbilling.projects.disableBillingForProject()` when `costAmount >= budgetAmount`
+3. Set the threshold to **100%** of your budget
+
+> ⚠️ Disabling billing stops **all** GCP services including Cloud Run and Cloud SQL. Use this only if you are comfortable with the app going fully offline when the cap is hit. For a personal project this is usually the right call.
+
+**Cloud Run max-instances as the primary throttle:**
+
+The `--max-instances=10` flag is your first line of defence. For your app's workload (GPX analysis, infrequent requests), hitting even 3 concurrent instances would be extraordinary traffic. Consider setting it to **3** initially:
+
+```bash
+gcloud run services update omne-enduro-backend \
+  --max-instances=3 \
+  --region=us-central1
+```
+
+At 3 max instances your Cloud Run bill is physically incapable of exceeding ~$5/month regardless of traffic patterns.
+
+**Cloud SQL — no auto-scaling, cost is fixed:**
+
+`db-f1-micro` is a fixed ~$10/month regardless of traffic. There is no throttling lever here — it is always on. This is the one unavoidable baseline cost.
 
 ---
 

@@ -27,3 +27,6 @@ local-dev-startup.md
 
 #ignore any file in tmp directory
 tmp/
+
+#ignore word docs
+*.docx
