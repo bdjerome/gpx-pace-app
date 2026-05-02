@@ -46,7 +46,7 @@
       </v-table>
     </div> -->
 
-    <v-divider class="my-8" />
+    <v-divider id="additional-info" class="my-8" />
 
     <h2 class="text-h6 font-weight-bold mb-3">Additional Information</h2>
     <!-- <v-list density="compact">
@@ -61,29 +61,57 @@
       <p class="text-body-2 mb-1">
         The hill adjustment feature automatically modifies your pace based on elevation changes:
       </p>
-      <ul> 
 
+      <ul> 
         <li class="text-body-2 mb-2">
-          <strong>Grade Calculation:</strong>
+          <strong>Uphill:</strong> Base pace is affected
+
           <ul> 
-            <li class="text-body-2 mb-2">
-              Grade is calculated as the change in elevation divided by the distance for each kilometer segment, expressed as a percentage. For example, a 10m climb over 1km distance results in a 1% grade.
-            </li>
-            <li class="text-body-2 mb-2">
-              Multiply grade with a factor to slow pace uphill
-              <ul> 
-                <li class="text-body-2 mb-2">
-                  If grade > 20% then factor is 0.12 otherwise 0.08
+              <li class="text-body-2 mb-2">
+                Grade is calculated as the change in elevation divided by the distance for each segment, expressed as a percentage. For example, a 10m climb over 1km distance results in a 1% grade.
+              </li>
+              <li class="text-body-2 mb-2">
+                  Grade is then multiplied by a piecewise factor and added to the base pace
+                  <ul> 
+                    <li class="text-body-2 mb-2">
+                      If grade > 20% then factor is 0.12 otherwise 0.08
+                    </li>
+                    <li class="text-body-2 mb-2">
+                  Pace decreases by 0.08 or 0.12 min/km for every 1% increase in grade
+                    </li>
+                  </ul>
                 </li>
-              </ul>
-            </li>
           </ul>
+
         </li>
+
 
         <li class="text-body-2 mb-2">
           <strong>Downhill:</strong> Base pace is unaffected
         </li>
       </ul>
+      <p class="text-body-2 mb-1">
+        <i>Perfect for trail races and hilly courses where maintaining even effort is more important than even pace.</i>
+      </p>
+
+      <h4 class="text-subtitle-2 font-weight-strong mb-1">Pace Correction for Performance Degradation</h4>
+      <p class="text-body-2 mb-1">
+        The decay adjustment feature gradually slows your pace over the second half of the race to account for fatigue. 
+      </p>
+
+       <ul> 
+        <li class="text-body-2 mb-2">
+          <strong>Progressive Slowdown:</strong> Gradual pace increase over time with increased decay after the halfway point
+        </li>
+        <li class="text-body-2 mb-2">
+          Utilizing a piecewise logarithmic decay funtion for fatigue modeling
+        </li>
+
+        </ul>
+
+        <p class="text-body-2 mb-1">
+        <i>Particularly useful for long-distance events where fatigue is an outsized factor later in a race.</i>
+        </p>
 
       <v-divider class="my-8" />
 
