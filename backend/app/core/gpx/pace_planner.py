@@ -58,14 +58,20 @@ def speed_calculation(base_pace, current_distance, grade, total_race_distance, d
 
         adjusted_pace += early_decay  # ADD to make pace slower
 
-    if hill_mode and grade > 0 and grade < 20:
-        # Hill adjustment - pace decreases based on positive grade
-        grade_factor = 0.08  # pace decreases by 0.08 min/km for every 1% increase in grade
-        adjusted_pace += grade_factor * grade
-    elif hill_mode and grade >= 20:
-        grade_factor = 0.12  # pace decreases by 0.12 min/km for every 1% increase in grade
-        adjusted_pace += grade_factor * grade
-        adjusted_pace = min(adjusted_pace, 12.5) #ensure pace doesn't exceed equivalent of 20 min/mile
+    # if hill_mode and grade > 0 and grade < 20:
+    #     # Hill adjustment - pace decreases based on positive grade
+    #     grade_factor = 0.08  # pace decreases by 0.08 min/km for every 1% increase in grade
+    #     adjusted_pace += grade_factor * grade
+    # elif hill_mode and grade >= 20:
+    #     grade_factor = 0.12  # pace decreases by 0.12 min/km for every 1% increase in grade
+    #     adjusted_pace += grade_factor * grade
+    #     adjusted_pace = min(adjusted_pace, 12.5) #ensure pace doesn't exceed equivalent of 20 min/mile
+
+    if hill_mode and 0 < grade < 0.3:
+        #minetti formula but only using positive grade portion
+        gap_multiplier = 43.17 * grade**5 - 8.44 * grade**4 - 12.06 * grade**3 + 12.86 * grade**2 + 5.42 * grade + 1.0
+        adjusted_pace = base_pace * gap_multiplier
+
     
     return adjusted_pace
 
@@ -173,7 +179,7 @@ class PaceCalculator:
 
         grade_per_km = df.groupby('km_number')['elevation'].agg(['first', 'last'])
         grade_per_km['elevation_change'] = grade_per_km['last'] - grade_per_km['first']
-        grade_per_km['grade'] = grade_per_km['elevation_change'] / 1.0  # since it's per km, divide by 1 km
+        grade_per_km['grade'] = (grade_per_km['elevation_change'] / 1.0) / 100  # convert to decimal percentage assuming 1 km segments
         grade_per_km.reset_index(inplace=True)
 
         #Calculate the grade between each point
