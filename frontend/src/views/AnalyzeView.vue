@@ -136,13 +136,13 @@
               />
 
               <!-- Options -->
-              <v-checkbox
+              <!-- <v-checkbox
                 v-model="config.decay"
                 label="Enable fatigue decay"
                 density="compact"
                 hide-details
                 class="mb-2"
-              />
+              /> -->
               <v-checkbox
                 v-model="config.hill_mode"
                 label="Enable hill adjustments"

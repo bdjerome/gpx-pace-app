@@ -62,39 +62,49 @@
         The hill adjustment feature automatically modifies your pace based on elevation changes:
       </p>
 
-      <ul> 
-        <li class="text-body-2 mb-2">
-          <strong>Uphill:</strong> Base pace is affected
 
-          <ul> 
-              <li class="text-body-2 mb-2">
-                Grade is calculated as the change in elevation divided by the distance for each segment, expressed as a percentage. For example, a 10m climb over 1km distance results in a 1% grade.
+        <ul> 
+            <li class="text-body-2 mb-2">
+              Grade is calculated as the change in elevation divided by the distance for each segment, expressed as a percentage. For example, a 10m climb over 1km distance results in a 1% grade.
+            </li>
+            <li class="text-body-2 mb-2">
+                We then utilize a piecewise function based on the Minetti grade-adjusted pace model to calculate the pace correction factor
+                <ul> 
+                  <li class="text-body-2 mb-2">
+                    This model accounts for the non-linear relationship between grade and pace with respect to caloric cost of running, but has limitations when applied to a race setting. The Minetti model assumes constant HR and energy expenditure across all grades, which is not realistic in a race setting where athletes may choose to exert effort strategically based on the terrain. This model also does not account for the cumulative fatigue over a race or for the biomechanics of runners.
+                  </li>
+                  <li class="text-body-2 mb-2">
+                You can view the Minetti paper at <a href="https://journals.physiology.org/doi/full/10.1152/japplphysiol.01177.2001?rfr_dat=cr_pub++0pubmed&url_ver=Z39.88-2003&rfr_id=ori%3Arid%3Acrossref.org" target="_blank">this link</a>.
+                  </li>
+                  <li class="text-body-2 mb-2">
+                    This model was derived from empirical data with slopes ranging from -0.45 to +0.45 (or -45% to +45% grade).
+                    <ul>
+                      <li class="text-body-2 mb-2">
+                        <strong>On downhill slopes and past +45% grade, the model has serious limitations and inaccuracies</strong>, so I chose to limit the application of the model.
+                      </li>
+                      <li class="text-body-2 mb-2">
+                        Between -100% and -20% grade, the model becomes unreliable so base pace is not adjusted
+                      </li>
+                      <li class="text-body-2 mb-2">
+                        Between slopes -20% and +45% grade, I use an adjusted version of the Minetti formula that is scaled to affect base pace by a maximum of ~2x at +45% grade and lower pace by a max of ~15% at -20% grade.
+                      </li>
+                      <li class="text-body-2 mb-2">
+                        For slopes greater than +45% grade, I apply the same maximum 2x pace adjustment factor to avoid unrealistic pace predictions.
+                      </li>
+                    </ul>
+                  </li>
+                </ul>
               </li>
-              <li class="text-body-2 mb-2">
-                  Grade is then multiplied by a piecewise factor and added to the base pace
-                  <ul> 
-                    <li class="text-body-2 mb-2">
-                      If grade > 20% then factor is 0.12 otherwise 0.08
-                    </li>
-                    <li class="text-body-2 mb-2">
-                  Pace decreases by 0.08 or 0.12 min/km for every 1% increase in grade
-                    </li>
-                  </ul>
-                </li>
-          </ul>
+              <li class = "text-body-2 mb-2">
+                This pacing adjustment model is designed to prevent underestimation of effort on climbs and to avoid overestimation of benefits on downhills. It is inherently limited by the assumptions made, especially with no assumption for degradation of performance over time.
+              </li>
+        </ul>
 
-        </li>
-
-
-        <li class="text-body-2 mb-2">
-          <strong>Downhill:</strong> Base pace is unaffected
-        </li>
-      </ul>
       <p class="text-body-2 mb-1">
         <i>Perfect for trail races and hilly courses where maintaining even effort is more important than even pace.</i>
       </p>
 
-      <h4 class="text-subtitle-2 font-weight-strong mb-1">Pace Correction for Performance Degradation</h4>
+      <!-- <h4 class="text-subtitle-2 font-weight-strong mb-1">Pace Correction for Performance Degradation</h4>
       <p class="text-body-2 mb-1">
         The decay adjustment feature gradually slows your pace over the second half of the race to account for fatigue. 
       </p>
@@ -111,7 +121,7 @@
 
         <p class="text-body-2 mb-1">
         <i>Particularly useful for long-distance events where fatigue is an outsized factor later in a race.</i>
-        </p>
+        </p> -->
 
       <v-divider class="my-8" />
 
@@ -161,7 +171,8 @@ const steps = [
   },
   {
     title: '4. Enable adjustments (optional)',
-    body: '<strong>Fatigue decay</strong> gradually slows your pace over the second half of the race. <strong>Hill adjustments</strong> will slow you on climbs based on segment grade. For more information, please see the <a href="#additional-info">Additional Info</a> section below.',
+    // <strong>Fatigue decay</strong> gradually slows your pace over the second half of the race. 
+    body: '<strong>Hill adjustments</strong> will slow you on climbs based on segment grade. For more information, please see the <a href="#additional-info">Additional Info</a> section below.',
     color: 'secondary',
   },
   {

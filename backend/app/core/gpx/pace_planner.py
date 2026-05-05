@@ -67,11 +67,23 @@ def speed_calculation(base_pace, current_distance, grade, total_race_distance, d
     #     adjusted_pace += grade_factor * grade
     #     adjusted_pace = min(adjusted_pace, 12.5) #ensure pace doesn't exceed equivalent of 20 min/mile
 
-    if hill_mode and 0 < grade < 0.3:
-        #minetti formula but only using positive grade portion
+    def minetti_func(grade: int):
         gap_multiplier = 43.17 * grade**5 - 8.44 * grade**4 - 12.06 * grade**3 + 12.86 * grade**2 + 5.42 * grade + 1.0
-        adjusted_pace = base_pace * gap_multiplier
 
+        return gap_multiplier
+
+    if hill_mode:
+        #minetti formula but only using positive grade portion
+        if grade > -0.2 and grade < 0.45:
+            gap_multiplier = minetti_func(grade)
+            gap_multiplier = (gap_multiplier / 4) + (3/4)  # Scaling minettti to account for users allowing heart rate to increase on climbs
+        #max gap multiplier set at 45% grade
+        elif grade >= 0.45:
+            gap_multiplier = minetti_func(0.45)
+            gap_multiplier = (gap_multiplier / 4) + (3/4)  
+        else:
+            gap_multiplier = 1.0  # No adjustment for negative grades or grades below -20%
+        adjusted_pace *= gap_multiplier  # Adjust pace by multiplier
     
     return adjusted_pace
 
